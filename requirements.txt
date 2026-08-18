@@ -1,0 +1,5 @@
+python-telegram-bot
+google-genai
+urllib3
+playwright
+Flask>=2.3.0

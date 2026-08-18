@@ -1,0 +1,7 @@
+{
+  "deploy": {
+    "start_command": "python bot.py",
+    "port": 7860,
+    "health_check_path": "/health"
+  }
+}
