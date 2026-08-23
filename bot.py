@@ -8,19 +8,17 @@ import unicodedata
 import shutil
 import subprocess
 import threading
-import asyncio
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     ApplicationBuilder,
     ContextTypes,
     MessageHandler,
-    CommandHandler,
     filters,
     CallbackQueryHandler
 )
-from telegram.request import HTTPXRequest
 import google.genai as genai
 
 # Logging Setup
@@ -35,8 +33,12 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GEMINI_MODEL_NAME = "gemini-3.5-flash-lite"
 
-if not TELEGRAM_BOT_TOKEN or not GOOGLE_API_KEY:
-    logger.error("❌ Environment variables TELEGRAM_BOT_TOKEN or GOOGLE_API_KEY missing!")
+if not TELEGRAM_BOT_TOKEN:
+    logger.error("❌ TELEGRAM_BOT_TOKEN environment variable not set!")
+    sys.exit(1)
+
+if not GOOGLE_API_KEY:
+    logger.error("❌ GOOGLE_API_KEY environment variable not set!")
     sys.exit(1)
 
 BOT_USERNAME = "BioDiagrams_Bot"  
@@ -74,7 +76,7 @@ client = genai.Client(api_key=GOOGLE_API_KEY)
 # ================= HEALTH CHECK SERVER =================
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path in ['/health', '/']:
+        if self.path == '/health' or self.path == '/':
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"Bot is running!")
@@ -90,14 +92,14 @@ def run_health_server():
     server.serve_forever()
 
 # ================= FONT DOWNLOAD =================
-def download_font_with_retry(urls: list, output_path: str, max_retries: int = 2) -> bool:
+def download_font_with_retry(urls: list, output_path: str, max_retries: int = 3) -> bool:
     if os.path.exists(output_path) and os.path.getsize(output_path) > 50000:
         return True
     for attempt in range(max_retries):
         for current_url in urls:
             try:
                 req = urllib.request.Request(current_url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req, timeout=15) as response:
+                with urllib.request.urlopen(req, timeout=30) as response:
                     content = response.read()
                     if len(content) < 10000: continue
                     with open(output_path, 'wb') as f:
@@ -105,13 +107,18 @@ def download_font_with_retry(urls: list, output_path: str, max_retries: int = 2)
                     return True
             except Exception:
                 continue
+        import time
+        time.sleep(1)
     return False
 
 def ensure_fonts_downloaded():
     os.makedirs(FONTS_DIR, exist_ok=True)
-    if not os.path.exists(SINHALA_FONT_PATH): download_font_with_retry([SINHALA_FONT_URL], SINHALA_FONT_PATH)
-    if not os.path.exists(ENGLISH_FONT_PATH): download_font_with_retry([ENGLISH_FONT_URL], ENGLISH_FONT_PATH)
-    if not os.path.exists(EMOJI_FONT_PATH): download_font_with_retry([EMOJI_FONT_URL], EMOJI_FONT_PATH)
+    if not os.path.exists(SINHALA_FONT_PATH): 
+        download_font_with_retry([SINHALA_FONT_URL], SINHALA_FONT_PATH)
+    if not os.path.exists(ENGLISH_FONT_PATH): 
+        download_font_with_retry([ENGLISH_FONT_URL], ENGLISH_FONT_PATH)
+    if not os.path.exists(EMOJI_FONT_PATH): 
+        download_font_with_retry([EMOJI_FONT_URL], EMOJI_FONT_PATH)
 
     try:
         sys_font_dir = "/usr/share/fonts/truetype/custom"
@@ -123,7 +130,7 @@ def ensure_fonts_downloaded():
     except Exception as e:
         logger.warning(f"Failed to copy fonts: {e}")
 
-# ================= TEXT & CAPTION HELPERS =================
+# ================= FIX AI SINHALA MISSPELLINGS =================
 def fix_ai_sinhala_mistakes(text: str) -> str:
     replacements = {
         'ග්ලයිකපොරීන': 'ග්ලයිකොප්‍රෝටීන',
@@ -136,75 +143,145 @@ def fix_ai_sinhala_mistakes(text: str) -> str:
     for wrong, correct in replacements.items():
         text = text.replace(wrong, correct)
     text = re.sub(r'\s+([\u0DCA-\u0DDF])', r'\1', text)
-    return text.replace('\u200B', '')
+    text = text.replace('\u200B', '')
+    return text
 
 def clean_final_caption(raw_caption: str) -> str:
     patterns_to_remove = [
-        r' - Educational Diagram for G\.C\.E\. A/L (Science|Physics|Chemistry|Biology)',
-        r' - උසස් පෙළ (භෞතික|රසායන|ජීව)? විද්‍යා අධ්‍යාපනික සටහන',
-        r'Educational Diagram for G\.C\.E\. A/L (Science|Physics|Chemistry|Biology)',
-        r'උසස් පෙළ (භෞතික|රසායන|ජීව)? විද්‍යා අධ්‍යාපනික සටහන'
+        r' - Educational Diagram for G\.C\.E\. A/L Science',
+        r' - Educational Diagram for G\.C\.E\. A/L Physics',
+        r' - Educational Diagram for G\.C\.E\. A/L Chemistry',
+        r' - Educational Diagram for G\.C\.E\. A/L Biology',
+        r' - උසස් පෙළ භෞතික විද්‍යා අධ්‍යාපනික සටහන',
+        r' - උසස් පෙළ රසායන විද්‍යා අධ්‍යාපනික සටහන',
+        r' - උසස් පෙළ ජීව විද්‍යා අධ්‍යාපනික සටහන',
+        r' - උසස් පෙළ විද්‍යා අධ්‍යාපනික සටහන',
+        r'Educational Diagram for G\.C\.E\. A/L Physics',
+        r'Educational Diagram for G\.C\.E\. A/L Chemistry',
+        r'Educational Diagram for G\.C\.E\. A/L Biology',
+        r'Educational Diagram for G\.C\.E\. A/L Science',
+        r'උසස් පෙළ භෞතික විද්‍යා අධ්‍යාපනික සටහන',
+        r'උසස් පෙළ රසායන විද්‍යා අධ්‍යාපනික සටහන',
+        r'උසස් පෙළ ජීව විද්‍යා අධ්‍යාපනික සටහන',
+        r'උසස් පෙළ විද්‍යා අධ්‍යාපනික සටහන'
     ]
     clean_text = raw_caption
     for pattern in patterns_to_remove:
         clean_text = re.sub(pattern, '', clean_text, flags=re.IGNORECASE)
-    return clean_text.strip(" -")
+    clean_text = re.sub(r'^[\s\-]+|[\s\-]+$', '', clean_text)
+    return clean_text.strip()
 
 def inject_watermark(svg_code: str) -> str:
     watermark_text = "Biovra AI 🧡⚡️ - By @BiologyHUBLK 🩵"
     if watermark_text not in svg_code:
         watermark_svg = f'''
-    <text x="800" y="1170" font-family="'Noto Sans Sinhala', 'LKLUG', sans-serif" font-size="20px" fill="#7F8C8D" text-anchor="middle">{watermark_text}</text>
+    <text x="800" y="1150" font-family="'Noto Sans Sinhala', 'LKLUG', sans-serif" font-size="20px" fill="#7F8C8D" text-anchor="middle">{watermark_text}</text>
 </svg>'''
         svg_code = svg_code.rstrip().replace("</svg>", watermark_svg)
     return svg_code
 
-# ================= PROMPT BUILDER =================
+# ================= UPDATED PROMPT - FIXED SINHALA OVERLAP =================
 def build_gemini_prompt(user_query: str) -> str:
     is_mindmap = "mind map" in user_query.lower() or "mindmap" in user_query.lower()
     
     common_text_rules = """
-**CRITICAL TEXT FORMATTING RULE**:
-Restrict ALL text blocks to a MAXIMUM of 2 lines.
-For ALL text nodes, use EXACTLY TWO `<tspan>` elements with dy positioning:
+**CRITICAL TEXT FORMATTING RULE (MUST FOLLOW - PREVENTS OVERLAP)**:
+
+To completely fix Sinhala text overlapping issues, you MUST restrict ALL text blocks to a MAXIMUM of 2 lines.
+Do NOT add 3rd or 4th lines for sub-details. If you need to include extra details, combine them into the main line text.
+
+For ALL text nodes (both mindmap AND diagram), use EXACTLY TWO `<tspan>` elements:
 - Line 1 (English): dy="0" (font-size: 20px)
-- Line 2 (Sinhala): dy="30" (font-size: 20px)
-Do NOT use more than 2 lines per text block!
+- Line 2 (Sinhala): dy="45" (font-size: 20px)
+
+**DO NOT** use more than 2 lines per text block under any circumstances!
 """
     
     if is_mindmap:
         style_instructions = """
-**CREATIVE MIND MAP DESIGN RULES**:
-Choose ONE layout style:
-1. RADIAL MAP: Root node in center (x="800", y="600"), branches radiating outwards symmetrically.
-2. HORIZONTAL TREE: Root node on far left (x="250", y="600"), branches fanning right.
-3. ORGANIC CLUSTER: Nodes arranged in a clean grid/cluster with soft rounded pill shapes (`<rect rx="50">`).
+**MIND MAP DESIGN RULES**:
 
-- Use varied pastel background colors for nodes.
-- Connect nodes using smooth curved paths (`<path d="..." fill="none" stroke="#2C3E50" stroke-width="2"/>`).
+1. **SPACING RULE (CRITICAL)**:
+   - CENTER NODE: x="800", y="200"
+   - SUB-NODES (level 1): use these Y positions:
+     - Node 1: y="420"
+     - Node 2: y="590"  
+     - Node 3: y="760"
+     - Node 4: y="930"
+     - Node 5: y="1050"
+   - SUB-SUB-NODES: add +90 to parent Y position
+
+2. **MANDATORY BACKGROUND BOXES**:
+   - Draw `<rect>` or `<circle>` background for EVERY text node
+   - Use different pastel colors for different branches
+   - Rect height: 100px (Strictly sized for exactly 2 lines of text)
+   - Rect width: Minimum 400px to fit combined text
+
+3. **TEXT STRUCTURE (MAX 2 LINES - FOLLOW EXACTLY)**:
+   <rect x="150" y="400" width="450" height="100" rx="15" fill="#E8F8F5" stroke="#2C3E50" stroke-width="2"/>
+   <text x="375" y="445" text-anchor="middle">
+       <tspan x="375" dy="0" font-size="20px" font-weight="600" fill="#1A1A2E">English Title (Add details here if needed)</tspan>
+       <tspan x="375" dy="45" font-size="20px" font-weight="500" fill="#16213E">සිංහල ශීර්ෂය (අමතර විස්තර මෙහි එක් කරන්න)</tspan>
+   </text>
+
+4. **CONNECTING LINES**:
+   - Use `<line>` with stroke="#2C3E50" stroke-width="2" to connect nodes
 """
     else:
         style_instructions = """
 **DIAGRAM DESIGN RULES**:
-- Keep structure and labels tightly packed within safe zones.
-- Use short straight pointer lines (50px to 80px).
-- Labels MUST be free-floating text (no rectangular backgrounds behind diagram labels).
+- Keep the structure, Title, and Labels tightly packed.
+- **CRITICAL COMPACTNESS**: Place text labels right next to the structures to minimize empty space.
+- **SHORT LINES**: Use straight, VERY SHORT pointer lines (max length 50px to 100px) to connect labels to diagram parts. DO NOT draw long lines.
+- **CRITICAL: DO NOT** draw boxes around labels (NO `<rect>` or `<circle>` backgrounds)
+- Labels MUST be free-floating text
+
+**TEXT STRUCTURE (MAX 2 LINES - FOLLOW EXACTLY)**:
+  <text x="340" y="340" text-anchor="start">
+      <tspan x="340" dy="0" font-size="20px" font-weight="600" fill="#1A1A2E">English Label (Details)</tspan>
+      <tspan x="340" dy="45" font-size="20px" font-weight="500" fill="#16213E">සිංහල ලේබලය (විස්තර)</tspan>
+  </text>
 """
 
     return f"""
-You are {BOT_NAME}, an expert scientific vector illustrator for Sri Lankan G.C.E. A/L Science subjects.
-Create a clean educational vector graphic for: "{user_query}"
+You are {BOT_NAME}, an expert scientific vector graphic illustrator for Sri Lankan G.C.E. A/L Science subjects (Biology, Chemistry, and Physics).
+The user requested an educational graphic for: "{user_query}"
+
+**YOUR GOAL**: Create a simple, clean, professional textbook-quality educational graphic.
 
 {style_instructions}
+
 {common_text_rules}
 
-**SAFE CANVAS**: viewBox="0 0 1600 1200". Keep ALL graphics strictly between x="200" to "1400" and y="150" to "1100".
-**LANGUAGE**: Every label MUST have English AND genuine Sinhala Unicode.
+**QUALITY STANDARDS**:
+1. **Visual Appeal**: Use modern, clean aesthetics with soft pastel gradients and dark outlines
+2. **Scientific Accuracy**: Ensure all structures are logically placed and precise
+3. **Simplicity**: DO NOT include extra legends, keys, or unnecessary decorative elements
+
+**LANGUAGE RULES**:
+- EVERY label MUST be in BOTH English AND genuine Sinhala (සිංහල)
+- Use ONLY Sinhala Unicode (U+0D80 to U+0DFF)
+
+**CANVAS**: viewBox="0 0 1600 1200" with white background
+
+**MANDATORY TITLE**: Main Title at x="800" y="80" (English) and Subtitle at x="800" y="130" (Sinhala)
+
+**SUPERSCRIPTS AND SUBSCRIPTS**:
+- DO NOT use HTML `<sub>` or `<sup>` tags
+- For subscripts: `H<tspan baseline-shift="sub" font-size="0.7em">2</tspan>O`
+- For superscripts: `Mg<tspan baseline-shift="super" font-size="0.7em">2+</tspan>`
+
+**STRICT MARGINS (CRITICAL)**: Keep ALL content well within the canvas. You MUST leave a 200px buffer on the left and right. Keep all drawing and text safely inside x="200" to "1400", and y="150" to "1100".
+
+**COLORS AND STYLES**:
+- Pastel colors for structures (Pink, Blue, Green, Yellow, Purple, Orange) with dark (#2C3E50) outlines
+- English: font-size="20px", fill="#1A1A2E", font-weight="600"
+- Sinhala: font-size="20px", fill="#16213E", font-weight="500"
 
 **OUTPUT FORMAT**:
 <<<CAPTION>>>
-English Title
-Sinhala Title + Emojis
+English Title (Short)
+Sinhala Title (Short) + [2-3 emojis]
 <<<END_CAPTION>>>
 
 <<<SVG>>>
@@ -212,197 +289,42 @@ Sinhala Title + Emojis
 <defs>...</defs>
 <rect width="1600" height="1200" fill="#ffffff"/>
 ...
-</svg><<<END_SVG>>>
+</svg>
+<<<END_SVG>>>
 """
 
-# ================= GENERATE DIAGRAM =================
-def sanitize_unwanted_characters(text: str) -> str:
-    cleaned = re.sub(r'[^\u0000-\u007F\u0D80-\u0DFF\u00A0-\u00FF\u2000-\u206F\u2600-\u27BF\U0001F000-\U0001FFFF]', '', text)
-    return unicodedata.normalize('NFC', fix_ai_sinhala_mistakes(cleaned))
-
-def force_close_xml_tags(svg_code: str) -> str:
-    svg_code = svg_code.replace("```xml", "").replace("```svg", "").replace("```", "")
-    svg_code = re.sub(r"<<<END_SVG>>>[\s\S]*$", "", svg_code, flags=re.IGNORECASE)
-    svg_code = sanitize_unwanted_characters(svg_code)
-    last_bracket = svg_code.rfind('>')
-    if last_bracket != -1: svg_code = svg_code[:last_bracket+1]
-    stack = []
-    for match in re.finditer(r'<\s*(/?)\s*([a-zA-Z0-9_\-]+)[^>]*?(/?)>', svg_code):
-        is_closing, tag_name, is_self_closing = match.group(1) == '/', match.group(2), match.group(3) == '/'
-        if is_self_closing or tag_name.lower() in ['xml', 'doctype']: continue
-        if not is_closing: stack.append(tag_name)
-        else:
-            for i in range(len(stack)-1, -1, -1):
-                if stack[i] == tag_name: stack = stack[:i]; break
-    for tag in reversed(stack): svg_code += f"\n</{tag}>"
-    return svg_code
-
-def generate_diagram_sync(query: str, attempt: int = 0):
-    prompt = build_gemini_prompt(query)
-    temp = min(0.3 + (attempt * 0.2), 0.8)
-    
-    # Disable AFC function calls to avoid freezing the model response
-    config = genai.types.GenerateContentConfig(
-        temperature=temp, 
-        top_p=0.95, 
-        max_output_tokens=8192,
-        tools=[]  
-    )
-    
-    response = client.models.generate_content(
-        model=GEMINI_MODEL_NAME,
-        contents=prompt,
-        config=config
-    )
-    raw_text = response.text if response else ""
-    caption_match = re.search(r"<<<CAPTION>>>\s*([\s\S]*?)\s*<<<END_CAPTION>>>", raw_text, re.IGNORECASE)
-    raw_caption = caption_match.group(1).strip() if caption_match else f"Diagram: {query} 🧬"
-    
-    clean_caption = sanitize_unwanted_characters(clean_final_caption(raw_caption))
-    start_idx = raw_text.find("<svg")
-    if start_idx == -1: return clean_caption, None
-    return clean_caption, force_close_xml_tags(raw_text[start_idx:])
-
-# ================= PLAYWRIGHT RENDERING =================
-async def render_svg_with_playwright(svg_code: str) -> bytes:
-    from playwright.async_api import async_playwright
-    
-    font_style = """
-    <style>
-        text, tspan { 
-            font-family: 'Noto Sans Sinhala', 'LKLUG', sans-serif !important; 
-            text-rendering: optimizeLegibility;
-        }
-    </style>
-    """
-    if "</defs>" in svg_code:
-        svg_code = svg_code.replace("</defs>", f"{font_style}</defs>")
-    elif "<svg" in svg_code:
-        svg_code = re.sub(r'(<svg[^>]*>)', r'\1' + font_style, svg_code, count=1)
-
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
-        )
-        try:
-            page = await browser.new_page(viewport={'width': 1600, 'height': 1200})
-            await page.set_content(svg_code, wait_until="domcontentloaded", timeout=15000)
-            await asyncio.sleep(0.5)
-            png_bytes = await page.screenshot(type='png', full_page=True, timeout=10000)
-            return png_bytes
-        finally:
-            await browser.close()
-
-async def convert_svg_to_png_bytes(svg_code: str) -> bytes:
-    ensure_fonts_downloaded()
-    svg_code = inject_watermark(unicodedata.normalize('NFC', svg_code))
-    return await render_svg_with_playwright(svg_code)
-
-# ================= REQUEST PROCESSOR =================
-async def process_diagram_request(update: Update, context: ContextTypes.DEFAULT_TYPE, query_text: str):
-    waiting_msg = await update.message.reply_text(MESSAGES["waiting"])
-    
-    try:
-        async with asyncio.timeout(45):
-            png_bytes, caption = None, ""
-            for attempt in range(2):
-                try:
-                    caption, svg_code = await asyncio.to_thread(generate_diagram_sync, query_text, attempt)
-                    if not svg_code: raise ValueError("No SVG produced")
-                    
-                    png_bytes = await convert_svg_to_png_bytes(svg_code)
-                    break
-                except Exception as e:
-                    logger.warning(f"Attempt {attempt+1} failed: {e}")
-
-            if png_bytes:
-                await update.message.reply_photo(
-                    photo=io.BytesIO(png_bytes), 
-                    caption=caption, 
-                    parse_mode="HTML"
-                )
-            else:
-                await update.message.reply_text(MESSAGES["error"])
-
-    except TimeoutError:
-        logger.error(f"Request timed out for query: {query_text}")
-        await update.message.reply_text("⏱️ Diagram generation took too long. Please try again!")
-    except Exception as e:
-        logger.error(f"Error processing request: {e}")
-        await update.message.reply_text(MESSAGES["error"])
-    finally:
-        try:
-            await context.bot.delete_message(chat_id=update.message.chat_id, message_id=waiting_msg.message_id)
-        except Exception:
-            pass
-
-# ================= MEMBERSHIP & HANDLERS =================
+# ================= MEMBERSHIP CHECK FUNCTIONS =================
 async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE, channel_username: str) -> bool:
     try:
         member = await context.bot.get_chat_member(chat_id=channel_username, user_id=user_id)
         return member.status in ['creator', 'administrator', 'member']
-    except Exception:
+    except:
         return False
 
 async def is_user_exempt(user_id: int, context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> bool:
-    if user_id in EXEMPT_USER_IDS: return True
+    if user_id in EXEMPT_USER_IDS:
+        return True
     try:
         member = await context.bot.get_chat_member(chat_id=chat_id, user_id=user_id)
-        if member.status in ['creator', 'administrator']: return True
-    except Exception:
+        if member.status in ['creator', 'administrator']:
+            return True
+    except:
         pass
     return False
 
-async def send_private_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = update.effective_chat
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Join Group 🌿🤍", url=GROUP_LINK)]])
-    try:
-        await context.bot.send_sticker(chat_id=chat.id, sticker=STICKER_FILE_ID)
-    except Exception as e:
-        logger.warning(f"Failed to send sticker: {e}")
-    await update.message.reply_text(MESSAGES["private_chat_not_allowed"], reply_markup=keyboard)
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message, chat, user = update.effective_message, update.effective_chat, update.effective_user
-    if not message or not chat: return
-
-    # Always reply with welcome screen in PMs
-    if chat.type == "private":
-        await send_private_welcome(update, context)
-        return
-
-    text = message.text or message.caption or ""
-    has_mention = bool(re.search(rf"@{BOT_USERNAME}(\s|$|\?|\.|,)", text, re.IGNORECASE))
-    is_reply = message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.username and message.reply_to_message.from_user.username.lower() == BOT_USERNAME.lower()
-    
-    if not has_mention and not is_reply:
-        return
-
-    cleaned_query = re.sub(rf"@{BOT_USERNAME}\s*", "", text, flags=re.IGNORECASE).strip()
-    if not cleaned_query: cleaned_query = "general science diagram"
-
-    if await is_user_exempt(user.id, context, chat.id):
-        await process_diagram_request(update, context, cleaned_query)
-        return
-
-    in_main = await check_membership(user.id, context, MAIN_CHANNEL_USERNAME)
-    in_backup = await check_membership(user.id, context, BACKUP_CHANNEL_USERNAME)
-
-    if in_main and in_backup:
-        await process_diagram_request(update, context, cleaned_query)
-    else:
-        context.user_data['pending_query'] = cleaned_query
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("අපේ Main Channel එක 🤍🌝", url=MAIN_CHANNEL_LINK)],
-            [InlineKeyboardButton("අපේ Backup Channel එක 🤍🌝", url=BACKUP_CHANNEL_LINK)],
-            [InlineKeyboardButton("මම දෙකටම join වෙලා ඉන්නේ ✅", callback_data="check_join")]
-        ])
-        await update.message.reply_text(MESSAGES["not_a_member"], reply_markup=keyboard)
+async def send_join_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("අපේ Main Channel එක 🤍🌝", url=MAIN_CHANNEL_LINK)],
+        [InlineKeyboardButton("අපේ Backup Channel එක 🤍🌝", url=BACKUP_CHANNEL_LINK)],
+        [InlineKeyboardButton("මම දෙකටම join වෙලා ඉන්නේ ✅", callback_data="check_join")]
+    ])
+    await update.message.reply_text(MESSAGES["not_a_member"], reply_markup=keyboard)
 
 async def join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id, chat_id = query.from_user.id, query.message.chat_id
+    user_id = query.from_user.id
+    chat_id = query.message.chat_id
 
     in_main = await check_membership(user_id, context, MAIN_CHANNEL_USERNAME)
     in_backup = await check_membership(user_id, context, BACKUP_CHANNEL_USERNAME)
@@ -418,9 +340,176 @@ async def join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.message.reply_text("කරුණාකර නැවත ඔබගේ ප්‍රශ්නය ටයිප් කරන්න.")
     else:
-        await query.message.reply_text("Channel දෙකටම join වෙලා නැහැ..🙃")
+        await query.message.reply_text(
+            "Channel දෙකටම join වෙලා නැහැ..🙃",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("අපේ Main Channel එක 🤍🌝", url=MAIN_CHANNEL_LINK)],
+                [InlineKeyboardButton("අපේ Backup Channel එක 🤍🌝", url=BACKUP_CHANNEL_LINK)],
+                [InlineKeyboardButton("මම දෙකටම join වෙලා ඉන්නේ ✅", callback_data="check_join")]
+            ])
+        )
 
-# ================= APP START =================
+async def process_diagram_request(update: Update, context: ContextTypes.DEFAULT_TYPE, query_text: str):
+    waiting_msg = await update.message.reply_text(MESSAGES["waiting"])
+    
+    png_bytes, caption = None, ""
+    for attempt in range(3):
+        try:
+            caption, svg_code = generate_diagram(query_text, attempt)
+            if not svg_code: raise ValueError("No SVG")
+            png_bytes = await convert_svg_to_png_bytes(svg_code)
+            break
+        except Exception as e:
+            logger.warning(f"Attempt {attempt+1} failed: {e}")
+            if attempt == 2:
+                await context.bot.delete_message(chat_id=update.message.chat_id, message_id=waiting_msg.message_id)
+                await update.message.reply_text(MESSAGES["error"])
+                return
+    
+    if png_bytes:
+        await update.message.reply_photo(
+            photo=io.BytesIO(png_bytes), 
+            caption=caption, 
+            parse_mode="HTML",
+            read_timeout=60,
+            write_timeout=60,
+            connect_timeout=60
+        )
+        await context.bot.delete_message(chat_id=update.message.chat_id, message_id=waiting_msg.message_id)
+
+# ================= GENERATE DIAGRAM FUNCTIONS =================
+def sanitize_unwanted_characters(text: str) -> str:
+    cleaned = re.sub(r'[^\u0000-\u007F\u0D80-\u0DFF\u00A0-\u00FF\u2000-\u206F\u2600-\u27BF\U0001F000-\U0001FFFF]', '', text)
+    cleaned = fix_ai_sinhala_mistakes(cleaned)
+    return unicodedata.normalize('NFC', cleaned)
+
+def force_close_xml_tags(svg_code: str) -> str:
+    svg_code = svg_code.replace("```xml", "").replace("```svg", "").replace("```", "")
+    svg_code = re.sub(r"<<<END_SVG>>>[\s\S]*$", "", svg_code, flags=re.IGNORECASE)
+    svg_code = sanitize_unwanted_characters(svg_code)
+    last_bracket = svg_code.rfind('>')
+    if last_bracket != -1: svg_code = svg_code[:last_bracket+1]
+    stack = []
+    for match in re.finditer(r'<\s*(/?)\s*([a-zA-Z0-9_\-]+)[^>]*?(/?)>', svg_code):
+        is_closing = match.group(1) == '/'
+        tag_name = match.group(2)
+        is_self_closing = match.group(3) == '/'
+        if is_self_closing or tag_name.lower() in ['xml', 'doctype']: continue
+        if not is_closing: stack.append(tag_name)
+        else:
+            for i in range(len(stack)-1, -1, -1):
+                if stack[i] == tag_name: stack = stack[:i]; break
+    for tag in reversed(stack): svg_code += f"\n</{tag}>"
+    return svg_code
+
+def generate_diagram(query: str, attempt: int = 0):
+    prompt = build_gemini_prompt(query)
+    temp = min(0.1 + (attempt * 0.2), 0.7)
+    response = client.models.generate_content(
+        model=GEMINI_MODEL_NAME,
+        contents=prompt,
+        config=genai.types.GenerateContentConfig(temperature=temp, top_p=0.95, max_output_tokens=8192)
+    )
+    raw_text = response.text if response else ""
+    caption_match = re.search(r"<<<CAPTION>>>\s*([\s\S]*?)\s*<<<END_CAPTION>>>", raw_text, re.IGNORECASE)
+    raw_caption = caption_match.group(1).strip() if caption_match else f"Diagram: {query} 🧬"
+    
+    clean_caption = clean_final_caption(raw_caption)
+    clean_caption = sanitize_unwanted_characters(clean_caption)
+
+    start_idx = raw_text.find("<svg")
+    if start_idx == -1: return clean_caption, None
+    raw_svg = raw_text[start_idx:]
+    return clean_caption, force_close_xml_tags(raw_svg)
+
+# ================== STRICT PLAYWRIGHT RENDERING ENGINE ==================
+async def render_svg_with_playwright(svg_code: str) -> bytes:
+    try:
+        from playwright.async_api import async_playwright
+        
+        font_style = """
+        <style>
+            text, tspan { 
+                font-family: 'Noto Sans Sinhala', 'LKLUG', sans-serif !important; 
+                text-rendering: optimizeLegibility;
+            }
+        </style>
+        """
+        if "</defs>" in svg_code:
+            svg_code = svg_code.replace("</defs>", f"{font_style}</defs>")
+        elif "<svg" in svg_code:
+            svg_code = re.sub(r'(<svg[^>]*>)', r'\1' + font_style, svg_code, count=1)
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                args=[
+                    '--no-sandbox', 
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--single-process'
+                ]
+            )
+            page = await browser.new_page(viewport={'width': 1600, 'height': 1200})
+            
+            await page.set_content(svg_code, wait_until="networkidle")
+            await page.wait_for_function("document.fonts.ready")
+            
+            png_bytes = await page.screenshot(type='png', full_page=True)
+            await browser.close()
+            return png_bytes
+            
+    except Exception as e:
+        logger.error(f"Playwright crashed: {e}")
+        raise e
+
+async def convert_svg_to_png_bytes(svg_code: str) -> bytes:
+    ensure_fonts_downloaded()
+    svg_code = unicodedata.normalize('NFC', svg_code)
+    svg_code = inject_watermark(svg_code)
+    return await render_svg_with_playwright(svg_code)
+
+# ================= MESSAGE HANDLER =================
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message, chat, user = update.effective_message, update.effective_chat, update.effective_user
+    if not message or not chat: return
+    text = message.text or message.caption or ""
+
+    if chat.type == "private":
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Join Group 🌿🤍", url=GROUP_LINK)
+        ]])
+        try:
+            await context.bot.send_sticker(chat_id=chat.id, sticker=STICKER_FILE_ID)
+        except Exception as e:
+            logger.warning(f"Sticker sending failed: {e}")
+            
+        await message.reply_text(MESSAGES["private_chat_not_allowed"], reply_markup=keyboard)
+        return
+
+    has_mention = bool(re.search(rf"@{BOT_USERNAME}(\s|$|\?|\.|,)", text, re.IGNORECASE))
+    is_reply = message.reply_to_message and message.reply_to_message.from_user.username and message.reply_to_message.from_user.username.lower() == BOT_USERNAME.lower()
+    if not has_mention and not is_reply:
+        return
+
+    cleaned_query = re.sub(rf"@{BOT_USERNAME}\s*", "", text, flags=re.IGNORECASE).strip()
+    if not cleaned_query:
+        cleaned_query = "general science diagram"
+
+    if await is_user_exempt(user.id, context, chat.id):
+        await process_diagram_request(update, context, cleaned_query)
+        return
+
+    in_main = await check_membership(user.id, context, MAIN_CHANNEL_USERNAME)
+    in_backup = await check_membership(user.id, context, BACKUP_CHANNEL_USERNAME)
+
+    if in_main and in_backup:
+        await process_diagram_request(update, context, cleaned_query)
+    else:
+        context.user_data['pending_query'] = cleaned_query
+        await send_join_message(update, context)
+
+# ================= APPLICATION START =================
 async def post_init(application: Application):
     await application.bot.get_me()
 
@@ -432,37 +521,16 @@ def main():
     
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
+    logger.info("✅ Health check server started on port 7860")
     
-    # 1. Connection Timeouts increased to 20s to stop Render from failing to connect
-    request_config = HTTPXRequest(
-        connect_timeout=20.0,
-        read_timeout=20.0,
-        write_timeout=20.0,
-        pool_timeout=20.0
-    )
-
-    # 2. Build App with robust request config
-    app = (
-        ApplicationBuilder()
-        .token(TELEGRAM_BOT_TOKEN)
-        .request(request_config)
-        .get_updates_request(request_config)
-        .post_init(post_init)
-        .build()
-    )
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
     
-    # 3. Add explicit /start command handler for PMs, plus message/callback handlers
-    app.add_handler(CommandHandler("start", handle_message))
     app.add_handler(MessageHandler(filters.TEXT | filters.CAPTION, handle_message))
     app.add_handler(CallbackQueryHandler(join_callback, pattern="check_join"))
     
-    logger.info(f"⚡ {BOT_NAME} Bot started!")
+    logger.info(f"⚡ {BOT_NAME} Bot is running... (Strict Playwright Engine 🔥)")
     
-    # 4. bootstrap_retries=-1 means if network drops on startup, keep retrying silently!
-    app.run_polling(
-        drop_pending_updates=False,
-        bootstrap_retries=-1
-    )
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
