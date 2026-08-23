@@ -367,7 +367,14 @@ async def process_diagram_request(update: Update, context: ContextTypes.DEFAULT_
                 return
     
     if png_bytes:
-        await update.message.reply_photo(photo=io.BytesIO(png_bytes), caption=caption, parse_mode="HTML")
+        await update.message.reply_photo(
+            photo=io.BytesIO(png_bytes), 
+            caption=caption, 
+            parse_mode="HTML",
+            read_timeout=60,
+            write_timeout=60,
+            connect_timeout=60
+        )
         await context.bot.delete_message(chat_id=update.message.chat_id, message_id=waiting_msg.message_id)
 
 # ================= GENERATE DIAGRAM FUNCTIONS =================
