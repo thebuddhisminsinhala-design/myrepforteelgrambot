@@ -8,10 +8,8 @@ import unicodedata
 import shutil
 import subprocess
 import threading
-import asyncio
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
-from flask import Flask, request, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -88,27 +86,23 @@ MESSAGES = {
 # Configure Gemini API
 client = genai.Client(api_key=GOOGLE_API_KEY)
 
-# ================= FLASK APP FOR WEBHOOK =================
-flask_app = Flask(__name__)
-bot_app = None
+# ================= HEALTH CHECK SERVER FOR SNAPDEPLOY =================
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/health' or self.path == '/':
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"Bot is running!")
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def log_message(self, format, *args):
+        pass
 
-@flask_app.route('/webhook', methods=['POST'])
-async def webhook():
-    try:
-        update = Update.de_json(request.get_json(), bot_app.bot)
-        await bot_app.process_update(update)
-        return "OK", 200
-    except Exception as e:
-        logger.error(f"Webhook error: {e}")
-        return "Error", 500
-
-@flask_app.route('/health')
-def health():
-    return jsonify({"status": "healthy", "message": "Bot is running!"})
-
-@flask_app.route('/')
-def home():
-    return jsonify({"status": "running", "message": "Bot is running!"})
+def run_health_server():
+    server = HTTPServer(('0.0.0.0', 7860), HealthCheckHandler)
+    server.serve_forever()
 
 # ================= FONT DOWNLOAD =================
 def download_font_with_retry(urls: list, output_path: str, max_retries: int = 3) -> bool:
@@ -526,31 +520,29 @@ async def post_init(application: Application):
     """
     await application.bot.get_me()
 
-async def main():
-    global bot_app
-    
+def main():
     # Ensure fonts are downloaded
     try:
         ensure_fonts_downloaded()
     except Exception as e:
         logger.warning(f"Font download issue: {e}")
     
+    # Start health check server for SnapDeploy
+    health_thread = threading.Thread(target=run_health_server, daemon=True)
+    health_thread.start()
+    logger.info("✅ Health check server started on port 7860")
+    
     # Create application with the post_init fix
-    bot_app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
     
     # Add handlers
-    bot_app.add_handler(MessageHandler(filters.TEXT | filters.CAPTION, handle_message))
-    bot_app.add_handler(CallbackQueryHandler(join_callback, pattern="check_join"))
+    app.add_handler(MessageHandler(filters.TEXT | filters.CAPTION, handle_message))
+    app.add_handler(CallbackQueryHandler(join_callback, pattern="check_join"))
     
-    # Set webhook (Render URL එකට change කරන්න)
-    webhook_url = "https://myrepforteelgrambot.onrender.com/webhook"
-    await bot_app.bot.set_webhook(url=webhook_url)
-    logger.info(f"✅ Webhook set to: {webhook_url}")
+    logger.info(f"⚡ {BOT_NAME} Bot is running... (Strict Playwright Engine 🔥)")
     
-    logger.info(f"⚡ {BOT_NAME} Bot is running... (Webhook Mode 🔥)")
-    
-    # Start Flask server
-    flask_app.run(host='0.0.0.0', port=7860)
+    # ✅ FIXED: drop_pending_updates=True prevents Conflict error
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
