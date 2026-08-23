@@ -184,20 +184,19 @@ def inject_watermark(svg_code: str) -> str:
 def build_gemini_prompt(user_query: str) -> str:
     is_mindmap = "mind map" in user_query.lower() or "mindmap" in user_query.lower()
     
-    # Common text formatting rule - INCREASED dy values for Sinhala
+    # Common text formatting rule - SIGNIFICANTLY INCREASED dy values for Sinhala overlapping
     common_text_rules = """
 **CRITICAL TEXT FORMATTING RULE (MUST FOLLOW - FIXES SINHALA OVERLAP)**:
 
-For ALL text nodes (both mindmap AND diagram), use these EXACT dy values:
+For ALL text nodes (both mindmap AND diagram), use these EXACT dy values to prevent overlapping of tall Sinhala vowel modifiers (like ු, ූ, ි, ී):
 - First line (English Title/Label): dy="0" (font-size: 22px)
-- Second line (Sinhala Title/Label): dy="48" (font-size: 20px)  ← INCREASED from 38 to 48
-- Third line (Sub-text/Details if needed): dy="40" (font-size: 16px)  ← INCREASED from 32 to 40
+- Second line (Sinhala Title/Label): dy="55" (font-size: 20px)  ← INCREASED heavily to 55px to ensure no overlap
+- Third line (Sub-text English): dy="45" (font-size: 16px)     ← INCREASED to 45px to avoid touching Sinhala above
+- Fourth line (Sub-text Sinhala): dy="45" (font-size: 16px)    ← INCREASED to 45px to avoid touching English above
 
-**WHY**: Normal (non-bold) Sinhala text renders with different line height than bold text.
-These larger dy values ensure BOTH bold and normal Sinhala text have enough space.
-This prevents overlapping of any text, whether bold or normal.
-
-**DO NOT** change these dy values. They are optimized for Sinhala rendering.
+**WHY**: Normal (non-bold) Sinhala text renders with very tall line heights due to complex modifiers.
+These larger dy values (55, 45) ensure BOTH bold and normal Sinhala text have plenty of space.
+This completely prevents overlapping. DO NOT use smaller dy values!
 """
     
     if is_mindmap:
@@ -208,24 +207,24 @@ This prevents overlapping of any text, whether bold or normal.
    - CENTER NODE: x="800", y="200"
    - SUB-NODES (level 1): use these Y positions:
      - Node 1: y="420"
-     - Node 2: y="590"  
-     - Node 3: y="760"
-     - Node 4: y="930"
-     - Node 5: y="1050"
-   - SUB-SUB-NODES: add +90 to parent Y position
+     - Node 2: y="600"  
+     - Node 3: y="780"
+     - Node 4: y="960"
+     - Node 5: y="1080"
+   - SUB-SUB-NODES: add +100 to parent Y position
    - DO NOT place two nodes at the same Y coordinate
 
 2. **MANDATORY BACKGROUND BOXES**:
    - Draw `<rect>` or `<circle>` background for EVERY text node
    - Use different pastel colors for different branches
-   - Rect height: use 140px (increased from 120)
+   - Rect height: use 170px (increased from 140 to accommodate larger dy spacing)
 
 3. **TEXT STRUCTURE (FOLLOW EXACTLY)**:
-   <rect x="150" y="400" width="340" height="140" rx="15" fill="#E8F8F5" stroke="#2C3E50" stroke-width="2"/>
-   <text x="320" y="440" text-anchor="middle">
-       <tspan x="320" dy="0" font-size="22px" font-weight="600" fill="#1A1A2E">English Title</tspan>
-       <tspan x="320" dy="48" font-size="20px" font-weight="500" fill="#16213E">සිංහල ශීර්ෂය</tspan>
-       <tspan x="320" dy="40" font-size="16px" fill="#34495E">Extra details</tspan>
+   <rect x="150" y="400" width="360" height="170" rx="15" fill="#E8F8F5" stroke="#2C3E50" stroke-width="2"/>
+   <text x="330" y="440" text-anchor="middle">
+       <tspan x="330" dy="0" font-size="22px" font-weight="600" fill="#1A1A2E">English Title</tspan>
+       <tspan x="330" dy="55" font-size="20px" font-weight="500" fill="#16213E">සිංහල ශීර්ෂය</tspan>
+       <tspan x="330" dy="45" font-size="16px" fill="#34495E">Extra details / අමතර කරුණු</tspan>
    </text>
 
 4. **CONNECTING LINES**:
@@ -242,7 +241,7 @@ This prevents overlapping of any text, whether bold or normal.
 **TEXT STRUCTURE (FOLLOW EXACTLY)**:
   <text x="340" y="340" text-anchor="start">
       <tspan x="340" dy="0" font-size="22px" font-weight="600" fill="#1A1A2E">English Label</tspan>
-      <tspan x="340" dy="48" font-size="20px" font-weight="500" fill="#16213E">සිංහල ලේබලය</tspan>
+      <tspan x="340" dy="55" font-size="20px" font-weight="500" fill="#16213E">සිංහල ලේබලය</tspan>
   </text>
 """
 
@@ -267,7 +266,7 @@ The user requested an educational graphic for: "{user_query}"
 
 **CANVAS**: viewBox="0 0 1600 1200" with white background
 
-**MANDATORY TITLE**: Main Title at x="800" y="80" (English) and Subtitle at x="800" y="130" (Sinhala)
+**MANDATORY TITLE**: Main Title at x="800" y="80" (English) and Subtitle at x="800" y="140" (Sinhala)
 
 **SUPERSCRIPTS AND SUBSCRIPTS**:
 - DO NOT use HTML `<sub>` or `<sup>` tags
