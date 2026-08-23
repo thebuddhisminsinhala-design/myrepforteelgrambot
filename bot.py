@@ -540,9 +540,7 @@ def main():
     app.add_handler(CallbackQueryHandler(join_callback, pattern="check_join"))
     
     logger.info(f"⚡ {BOT_NAME} Bot is running... (Strict Playwright Engine 🔥)")
-    
-    # ✅ FIXED: drop_pending_updates=True prevents Conflict error
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
