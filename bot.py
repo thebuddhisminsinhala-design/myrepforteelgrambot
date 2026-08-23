@@ -180,56 +180,67 @@ def inject_watermark(svg_code: str) -> str:
         svg_code = svg_code.rstrip().replace("</svg>", watermark_svg)
     return svg_code
 
-# ================= UPDATED PROMPT - MINIMAP FIXED =================
+# ================= UPDATED PROMPT - CONSISTENT DY VALUES =================
 def build_gemini_prompt(user_query: str) -> str:
     is_mindmap = "mind map" in user_query.lower() or "mindmap" in user_query.lower()
     
+    # Common text formatting rule for BOTH mindmap and diagram
+    common_text_rules = """
+**CRITICAL TEXT FORMATTING RULE (MUST FOLLOW)**:
+
+For ALL text nodes (both mindmap AND diagram), use these EXACT dy values:
+- First line (English Title/Label): dy="0" (font-size: 22px)
+- Second line (Sinhala Title/Label): dy="38" (font-size: 20px)  
+- Third line (Sub-text/Details if needed): dy="32" (font-size: 16px)
+
+**WHY**: Using consistent dy values prevents text overlap between bold and normal texts.
+Bold text and normal text render differently in browsers - consistent dy values fix this.
+
+**DO NOT** change dy values based on font-weight. Use the SAME dy values for ALL nodes regardless of bold/normal.
+"""
+    
     if is_mindmap:
         style_instructions = """
-**MIND MAP DESIGN RULES (CRITICAL - READ CAREFULLY)**:
+**MIND MAP DESIGN RULES**:
 
-1. **SPACING RULE (MOST IMPORTANT)**:
-   - Place the CENTRAL NODE at the center: x="800", y="200"
-   - For SUB-NODES (level 1), use these Y positions:
-     - Node 1: y="380"
-     - Node 2: y="520"
-     - Node 3: y="660"
-     - Node 4: y="800"
-     - Node 5: y="940"
-   - For SUB-SUB-NODES (level 2), add +60 to the parent Y position
-   - DO NOT place two nodes at the same Y coordinate - they WILL OVERLAP!
+1. **SPACING RULE (CRITICAL - NO OVERLAP)**:
+   - CENTER NODE: x="800", y="200"
+   - SUB-NODES (level 1): use these Y positions:
+     - Node 1: y="400"
+     - Node 2: y="560"  
+     - Node 3: y="720"
+     - Node 4: y="880"
+     - Node 5: y="1000"
+   - SUB-SUB-NODES: add +80 to parent Y position
+   - DO NOT place two nodes at the same Y coordinate
 
 2. **MANDATORY BACKGROUND BOXES**:
-   - Draw a `<rect>` or `<circle>` background for EVERY text node
+   - Draw `<rect>` or `<circle>` background for EVERY text node
    - Use different pastel colors for different branches
 
-3. **TEXT FORMATTING RULES**:
-   - EVERY `<tspan>` MUST have the SAME `x` coordinate as its parent `<text>` tag
-   - Sinhala text size: font-size="20px"
-   - English text size: font-size="22px"
-
-4. **EXAMPLE NODE (FOLLOW EXACTLY)**:
-   <rect x="150" y="360" width="300" height="110" rx="15" fill="#E8F8F5" stroke="#2C3E50" stroke-width="2"/>
-   <text x="300" y="400" text-anchor="middle">
-       <tspan x="300" dy="0" font-size="22px" font-weight="600" fill="#1A1A2E">English Title</tspan>
-       <tspan x="300" dy="32" font-size="20px" font-weight="500" fill="#16213E">සිංහල ශීර්ෂය</tspan>
-       <tspan x="300" dy="28" font-size="16px" fill="#34495E">Extra details</tspan>
+3. **TEXT STRUCTURE (FOLLOW EXACTLY)**:
+   <rect x="150" y="380" width="320" height="120" rx="15" fill="#E8F8F5" stroke="#2C3E50" stroke-width="2"/>
+   <text x="310" y="420" text-anchor="middle">
+       <tspan x="310" dy="0" font-size="22px" font-weight="600" fill="#1A1A2E">English Title</tspan>
+       <tspan x="310" dy="38" font-size="20px" font-weight="500" fill="#16213E">සිංහල ශීර්ෂය</tspan>
+       <tspan x="310" dy="32" font-size="16px" fill="#34495E">Extra details</tspan>
    </text>
 
-5. **CONNECTING LINES**:
+4. **CONNECTING LINES**:
    - Use `<line>` with stroke="#2C3E50" stroke-width="2" to connect nodes
-   - Start from center node to each sub-node
 """
     else:
         style_instructions = """
 **DIAGRAM DESIGN RULES**:
-- Keep the structure, Title, and Labels tightly packed to fit perfectly on the canvas. 
-- Use straight pointer lines to connect labels to the specific parts of the graphic.
-- **CRITICAL: DO NOT** draw boxes, rectangles (`<rect>`), or circles (`<circle>`) around the label texts. The labels MUST be free-floating text.
-- Format labels EXACTLY like this example template (NO `<rect>` background):
+- Keep the structure, Title, and Labels tightly packed
+- Use straight pointer lines to connect labels to diagram parts
+- **CRITICAL: DO NOT** draw boxes around labels (NO `<rect>` or `<circle>` backgrounds)
+- Labels MUST be free-floating text
+
+**TEXT STRUCTURE (FOLLOW EXACTLY)**:
   <text x="340" y="340" text-anchor="start">
-      <tspan x="340" dy="0" font-size="22px" font-weight="600" fill="#1A1A2E">English Text</tspan>
-      <tspan x="340" dy="35" font-size="20px" font-weight="500" fill="#16213E">සිංහල පෙළ</tspan>
+      <tspan x="340" dy="0" font-size="22px" font-weight="600" fill="#1A1A2E">English Label</tspan>
+      <tspan x="340" dy="38" font-size="20px" font-weight="500" fill="#16213E">සිංහල ලේබලය</tspan>
   </text>
 """
 
@@ -241,37 +252,37 @@ The user requested an educational graphic for: "{user_query}"
 
 {style_instructions}
 
+{common_text_rules}
+
 **QUALITY STANDARDS**:
-1. **Visual Appeal**: Use modern, clean aesthetics with soft pastel gradients and dark outlines for drawings.
-2. **Scientific Accuracy**: Ensure all structures and branches are logically placed and precise.
-3. **Simplicity**: DO NOT include extra legends, keys, or unnecessary decorative elements. ONLY draw Title, Graphic, and Labels.
+1. **Visual Appeal**: Use modern, clean aesthetics with soft pastel gradients and dark outlines
+2. **Scientific Accuracy**: Ensure all structures are logically placed and precise
+3. **Simplicity**: DO NOT include extra legends, keys, or unnecessary decorative elements
 
-**LANGUAGE RULES (STRICT SINHALA & ENGLISH)**:
-- EVERY label and mind map node MUST be in BOTH English AND genuine Sinhala (සිංහල). 
-- Use ONLY Sinhala Unicode (U+0D80 to U+0DFF). DO NOT put spaces between a Sinhala letter and its vowel modifier (pillama).
+**LANGUAGE RULES**:
+- EVERY label MUST be in BOTH English AND genuine Sinhala (සිංහල)
+- Use ONLY Sinhala Unicode (U+0D80 to U+0DFF)
 
-**CRITICAL DESIGN & TEXT OVERLAP RULES (READ CAREFULLY)**:
+**CANVAS**: viewBox="0 0 1600 1200" with white background
 
-1. **CANVAS**: viewBox="0 0 1600 1200" with white background.
+**MANDATORY TITLE**: Main Title at x="800" y="80" (English) and Subtitle at x="800" y="130" (Sinhala)
 
-2. **MANDATORY TITLE**: You MUST include the Main Title at x="800" y="80" (English) and Subtitle at x="800" y="130" (Sinhala). DO NOT skip the title!
+**SUPERSCRIPTS AND SUBSCRIPTS**:
+- DO NOT use HTML `<sub>` or `<sup>` tags
+- For subscripts: `H<tspan baseline-shift="sub" font-size="0.7em">2</tspan>O`
+- For superscripts: `Mg<tspan baseline-shift="super" font-size="0.7em">2+</tspan>`
 
-3. **SUPERSCRIPTS AND SUBSCRIPTS**:
-   - DO NOT use HTML `<sub>` or `<sup>` tags (they break SVG rendering).
-   - For **subscripts** (e.g., H₂O, CO₂), use inline SVG tspan with baseline-shift: `H<tspan baseline-shift="sub" font-size="0.7em">2</tspan>O`
-   - For **superscripts** (e.g., x², Mg²⁺), use inline SVG tspan with baseline-shift: `Mg<tspan baseline-shift="super" font-size="0.7em">2+</tspan>`
-
-4. **STRICT MARGINS**: Keep ALL content strictly within x="100" to "1500", and y="150" to "1100".
+**STRICT MARGINS**: Keep ALL content within x="100" to "1500", y="150" to "1100"
 
 **COLORS AND STYLES**:
-- Use pastel colors for structures (Pink, Blue, Green, Yellow, Purple, Orange) with dark (#2C3E50) outlines.
-- English labels: font-size="22px", fill="#1A1A2E", font-weight="600".
-- Sinhala labels: font-size="20px", fill="#16213E", font-weight="500".
+- Pastel colors for structures (Pink, Blue, Green, Yellow, Purple, Orange) with dark (#2C3E50) outlines
+- English: font-size="22px", fill="#1A1A2E", font-weight="600"
+- Sinhala: font-size="20px", fill="#16213E", font-weight="500"
 
 **OUTPUT FORMAT**:
 <<<CAPTION>>>
 English Title (Short)
-Sinhala Title (Short) + [2-3 scientific emojis]
+Sinhala Title (Short) + [2-3 emojis]
 <<<END_CAPTION>>>
 
 <<<SVG>>>
@@ -513,7 +524,6 @@ def main():
     
     logger.info(f"⚡ {BOT_NAME} Bot is running... (Strict Playwright Engine 🔥)")
     
-    # ✅ drop_pending_updates=True prevents Conflict error
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
