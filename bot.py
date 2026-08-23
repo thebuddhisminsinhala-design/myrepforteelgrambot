@@ -175,108 +175,87 @@ def inject_watermark(svg_code: str) -> str:
     watermark_text = "Biovra AI 🧡⚡️ - By @BiologyHUBLK 🩵"
     if watermark_text not in svg_code:
         watermark_svg = f'''
-    <text x="800" y="1150" font-family="'Noto Sans Sinhala', 'LKLUG', sans-serif" font-size="20px" fill="#7F8C8D" text-anchor="middle">{watermark_text}</text>
+    <text x="800" y="1170" font-family="'Noto Sans Sinhala', 'LKLUG', sans-serif" font-size="20px" fill="#7F8C8D" text-anchor="middle">{watermark_text}</text>
 </svg>'''
         svg_code = svg_code.rstrip().replace("</svg>", watermark_svg)
     return svg_code
 
-# ================= UPDATED PROMPT - FIXED SINHALA OVERLAP =================
+# ================= UPDATED PROMPT - CREATIVE STYLES =================
 def build_gemini_prompt(user_query: str) -> str:
     is_mindmap = "mind map" in user_query.lower() or "mindmap" in user_query.lower()
     
     common_text_rules = """
 **CRITICAL TEXT FORMATTING RULE (MUST FOLLOW - PREVENTS OVERLAP)**:
-
-To completely fix Sinhala text overlapping issues, you MUST restrict ALL text blocks to a MAXIMUM of 2 lines.
-Do NOT add 3rd or 4th lines for sub-details. If you need to include extra details, combine them into the main line text.
+Restrict ALL text blocks to a MAXIMUM of 2 lines. Do NOT add 3rd or 4th lines for sub-details.
+Combine extra details into the main line text.
 
 For ALL text nodes (both mindmap AND diagram), use EXACTLY TWO `<tspan>` elements:
 - Line 1 (English): dy="0" (font-size: 20px)
 - Line 2 (Sinhala): dy="45" (font-size: 20px)
 
-**DO NOT** use more than 2 lines per text block under any circumstances!
+**DO NOT** use more than 2 lines per text block! Keep labels well within canvas boundaries.
 """
     
     if is_mindmap:
         style_instructions = """
-**MIND MAP DESIGN RULES**:
+**CREATIVE MIND MAP DESIGN RULES**:
 
-1. **SPACING RULE (CRITICAL)**:
-   - CENTER NODE: x="800", y="200"
-   - SUB-NODES (level 1): use these Y positions:
-     - Node 1: y="420"
-     - Node 2: y="590"  
-     - Node 3: y="760"
-     - Node 4: y="930"
-     - Node 5: y="1050"
-   - SUB-SUB-NODES: add +90 to parent Y position
+Do NOT just make a boring top-down tree. Choose ONE of the following creative layouts randomly to make this visually appealing:
+1. **RADIAL/SPIDER MAP**: Root node in the dead center (x="800", y="600"). Branch out symmetrically in all directions (top, bottom, left, right, diagonals).
+2. **HORIZONTAL NETWORK**: Root node on the far left (x="250", y="600"). Branches organically fan out towards the right.
+3. **ORGANIC CLUSTER**: Use a honeycomb or pill-shaped cluster design. Nodes dynamically spaced.
 
-2. **MANDATORY BACKGROUND BOXES**:
-   - Draw `<rect>` or `<circle>` background for EVERY text node
-   - Use different pastel colors for different branches
-   - Rect height: 100px (Strictly sized for exactly 2 lines of text)
-   - Rect width: Minimum 400px to fit combined text
+**NODE SHAPES & STYLING**:
+- Stop using only square boxes! Mix it up! Use `<rect rx="50">` (pill/capsule shapes), `<circle>`, or standard `<rect rx="15">` for nodes.
+- Make the `<rect>` or `<circle>` background **wide enough** to encapsulate all the text (usually width="450" and height="100").
+- Use varied pastel gradients, drop shadows, or thick colorful borders (stroke-width="3") for node backgrounds.
 
-3. **TEXT STRUCTURE (MAX 2 LINES - FOLLOW EXACTLY)**:
-   <rect x="150" y="400" width="450" height="100" rx="15" fill="#E8F8F5" stroke="#2C3E50" stroke-width="2"/>
+**CONNECTING LINES**:
+- Use smooth bezier curves (`<path d="..." fill="none" stroke="..." />`) instead of rigid straight lines when possible.
+- If using straight `<line>`, make them visually interesting (dashed, colored matching the node, varying stroke widths).
+
+**TEXT STRUCTURE (MAX 2 LINES - STRICT)**:
    <text x="375" y="445" text-anchor="middle">
-       <tspan x="375" dy="0" font-size="20px" font-weight="600" fill="#1A1A2E">English Title (Add details here if needed)</tspan>
-       <tspan x="375" dy="45" font-size="20px" font-weight="500" fill="#16213E">සිංහල ශීර්ෂය (අමතර විස්තර මෙහි එක් කරන්න)</tspan>
+       <tspan x="375" dy="0" font-size="20px" font-weight="600" fill="#1A1A2E">English Title</tspan>
+       <tspan x="375" dy="45" font-size="20px" font-weight="500" fill="#16213E">සිංහල ශීර්ෂය</tspan>
    </text>
-
-4. **CONNECTING LINES**:
-   - Use `<line>` with stroke="#2C3E50" stroke-width="2" to connect nodes
 """
     else:
         style_instructions = """
 **DIAGRAM DESIGN RULES**:
-- Keep the structure, Title, and Labels tightly packed.
-- **CRITICAL COMPACTNESS**: Place text labels right next to the structures to minimize empty space.
-- **SHORT LINES**: Use straight, VERY SHORT pointer lines (max length 50px to 100px) to connect labels to diagram parts. DO NOT draw long lines.
-- **CRITICAL: DO NOT** draw boxes around labels (NO `<rect>` or `<circle>` backgrounds)
-- Labels MUST be free-floating text
+- **CRITICAL COMPACTNESS**: Place text labels right next to the structures to minimize empty space and prevent clipping at edges.
+- **SHORT LINES**: Use straight, VERY SHORT pointer lines (max length 50px to 80px). DO NOT draw long crossing lines.
+- **NO BOXES AROUND LABELS**: Labels MUST be free-floating text. Do not draw rectangles behind diagram labels.
 
-**TEXT STRUCTURE (MAX 2 LINES - FOLLOW EXACTLY)**:
+**TEXT STRUCTURE (MAX 2 LINES - STRICT)**:
   <text x="340" y="340" text-anchor="start">
-      <tspan x="340" dy="0" font-size="20px" font-weight="600" fill="#1A1A2E">English Label (Details)</tspan>
-      <tspan x="340" dy="45" font-size="20px" font-weight="500" fill="#16213E">සිංහල ලේබලය (විස්තර)</tspan>
+      <tspan x="340" dy="0" font-size="20px" font-weight="600" fill="#1A1A2E">English Label</tspan>
+      <tspan x="340" dy="45" font-size="20px" font-weight="500" fill="#16213E">සිංහල ලේබලය</tspan>
   </text>
 """
 
     return f"""
-You are {BOT_NAME}, an expert scientific vector graphic illustrator for Sri Lankan G.C.E. A/L Science subjects (Biology, Chemistry, and Physics).
+You are {BOT_NAME}, an expert scientific vector graphic illustrator for Sri Lankan G.C.E. A/L Science subjects.
 The user requested an educational graphic for: "{user_query}"
 
-**YOUR GOAL**: Create a simple, clean, professional textbook-quality educational graphic.
+**YOUR GOAL**: Create a highly engaging, creative, and professionally designed educational graphic.
 
 {style_instructions}
 
 {common_text_rules}
 
-**QUALITY STANDARDS**:
-1. **Visual Appeal**: Use modern, clean aesthetics with soft pastel gradients and dark outlines
-2. **Scientific Accuracy**: Ensure all structures are logically placed and precise
-3. **Simplicity**: DO NOT include extra legends, keys, or unnecessary decorative elements
-
 **LANGUAGE RULES**:
 - EVERY label MUST be in BOTH English AND genuine Sinhala (සිංහල)
 - Use ONLY Sinhala Unicode (U+0D80 to U+0DFF)
 
-**CANVAS**: viewBox="0 0 1600 1200" with white background
+**CANVAS & SAFE ZONES (CRITICAL TO PREVENT CUTTING OFF)**: 
+- viewBox="0 0 1600 1200" with white background.
+- Keep ALL drawings and text strictly inside the safe zone: x="250" to "1350", and y="150" to "1050". DO NOT place anything near the very edges!
 
-**MANDATORY TITLE**: Main Title at x="800" y="80" (English) and Subtitle at x="800" y="130" (Sinhala)
+**MANDATORY TITLE**: Main Title at x="800" y="80" (English) and Subtitle at x="800" y="130" (Sinhala).
 
-**SUPERSCRIPTS AND SUBSCRIPTS**:
-- DO NOT use HTML `<sub>` or `<sup>` tags
-- For subscripts: `H<tspan baseline-shift="sub" font-size="0.7em">2</tspan>O`
-- For superscripts: `Mg<tspan baseline-shift="super" font-size="0.7em">2+</tspan>`
-
-**STRICT MARGINS (CRITICAL)**: Keep ALL content well within the canvas. You MUST leave a 200px buffer on the left and right. Keep all drawing and text safely inside x="200" to "1400", and y="150" to "1100".
-
-**COLORS AND STYLES**:
-- Pastel colors for structures (Pink, Blue, Green, Yellow, Purple, Orange) with dark (#2C3E50) outlines
-- English: font-size="20px", fill="#1A1A2E", font-weight="600"
-- Sinhala: font-size="20px", fill="#16213E", font-weight="500"
+**COLORS**:
+- Vibrant but soft pastel colors with dark (#2C3E50) outlines.
 
 **OUTPUT FORMAT**:
 <<<CAPTION>>>
@@ -404,7 +383,7 @@ def force_close_xml_tags(svg_code: str) -> str:
 
 def generate_diagram(query: str, attempt: int = 0):
     prompt = build_gemini_prompt(query)
-    temp = min(0.1 + (attempt * 0.2), 0.7)
+    temp = min(0.3 + (attempt * 0.2), 0.9)  # Slightly higher temperature for more layout creativity
     response = client.models.generate_content(
         model=GEMINI_MODEL_NAME,
         contents=prompt,
