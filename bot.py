@@ -184,7 +184,6 @@ def inject_watermark(svg_code: str) -> str:
 def build_gemini_prompt(user_query: str) -> str:
     is_mindmap = "mind map" in user_query.lower() or "mindmap" in user_query.lower()
     
-    # Common text formatting rule - FORCED 2 LINES MAX
     common_text_rules = """
 **CRITICAL TEXT FORMATTING RULE (MUST FOLLOW - PREVENTS OVERLAP)**:
 
@@ -231,8 +230,9 @@ For ALL text nodes (both mindmap AND diagram), use EXACTLY TWO `<tspan>` element
     else:
         style_instructions = """
 **DIAGRAM DESIGN RULES**:
-- Keep the structure, Title, and Labels tightly packed
-- Use straight pointer lines to connect labels to diagram parts
+- Keep the structure, Title, and Labels tightly packed.
+- **CRITICAL COMPACTNESS**: Place text labels right next to the structures to minimize empty space.
+- **SHORT LINES**: Use straight, VERY SHORT pointer lines (max length 50px to 100px) to connect labels to diagram parts. DO NOT draw long lines.
 - **CRITICAL: DO NOT** draw boxes around labels (NO `<rect>` or `<circle>` backgrounds)
 - Labels MUST be free-floating text
 
@@ -271,7 +271,7 @@ The user requested an educational graphic for: "{user_query}"
 - For subscripts: `H<tspan baseline-shift="sub" font-size="0.7em">2</tspan>O`
 - For superscripts: `Mg<tspan baseline-shift="super" font-size="0.7em">2+</tspan>`
 
-**STRICT MARGINS**: Keep ALL content within x="100" to "1500", y="150" to "1100"
+**STRICT MARGINS (CRITICAL)**: Keep ALL content well within the canvas. You MUST leave a 200px buffer on the left and right. Keep all drawing and text safely inside x="200" to "1400", and y="150" to "1100".
 
 **COLORS AND STYLES**:
 - Pastel colors for structures (Pink, Blue, Green, Yellow, Purple, Orange) with dark (#2C3E50) outlines
