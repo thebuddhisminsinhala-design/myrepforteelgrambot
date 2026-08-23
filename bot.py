@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # ================= CONFIGURATION =================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GEMINI_MODEL_NAME = "gemini-3.5-flash-lite"  # Updated to latest
+GEMINI_MODEL_NAME = "gemini-3.5-flash-lite"
 
 if not TELEGRAM_BOT_TOKEN:
     logger.error("❌ TELEGRAM_BOT_TOKEN environment variable not set!")
@@ -44,49 +44,36 @@ if not GOOGLE_API_KEY:
 BOT_USERNAME = "BioDiagrams_Bot"  
 BOT_NAME = "Biovra AI 🧡⚡️"
 
-# Channel details
 MAIN_CHANNEL_LINK = "https://t.me/BiologyHubLK"
 MAIN_CHANNEL_USERNAME = "@BiologyHubLK"
 BACKUP_CHANNEL_LINK = "https://t.me/BiologyHubLKBackup"
 BACKUP_CHANNEL_USERNAME = "@BiologyHubLKBackup"
-
 GROUP_LINK = "https://t.me/BiologyHUbLK_Chat"
 STICKER_FILE_ID = "CAACAgIAAxkBAAERojJqa38J94V3D0krLrqkGC4_fubIBAACnA0AAmVJ2Eh6rZ_M40MN6j0E"
-
-# Exempt user IDs (these users skip membership check)
-EXEMPT_USER_IDS = [8175452079]  # add more if needed
+EXEMPT_USER_IDS = [8175452079]
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FONTS_DIR = os.path.join(BASE_DIR, "fonts")
 os.makedirs(FONTS_DIR, exist_ok=True)
 
-SINHALA_FONT_NAME = "NotoSansSinhala-Regular.ttf"
-ENGLISH_FONT_NAME = "NotoSans-Regular.ttf"
-EMOJI_FONT_NAME = "NotoColorEmoji.ttf"
-SINHALA_FONT_PATH = os.path.join(FONTS_DIR, SINHALA_FONT_NAME)
-ENGLISH_FONT_PATH = os.path.join(FONTS_DIR, ENGLISH_FONT_NAME)
-EMOJI_FONT_PATH = os.path.join(FONTS_DIR, EMOJI_FONT_NAME)
+SINHALA_FONT_PATH = os.path.join(FONTS_DIR, "NotoSansSinhala-Regular.ttf")
+ENGLISH_FONT_PATH = os.path.join(FONTS_DIR, "NotoSans-Regular.ttf")
+EMOJI_FONT_PATH = os.path.join(FONTS_DIR, "NotoColorEmoji.ttf")
 
-# Font URLs
 SINHALA_FONT_URL = "https://cdn.jsdelivr.net/gh/googlefonts/noto-fonts@main/hinted/ttf/NotoSansSinhala/NotoSansSinhala-Regular.ttf"
 ENGLISH_FONT_URL = "https://cdn.jsdelivr.net/gh/googlefonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Regular.ttf"
 EMOJI_FONT_URL = "https://cdn.jsdelivr.net/gh/googlefonts/noto-emoji@main/fonts/NotoColorEmoji.ttf"
-
-ALT_SINHALA_FONT_URL = "https://fonts.gstatic.com/s/notosanssinhala/v26/NotoSansSinhala-Regular.ttf"
-ALT_ENGLISH_FONT_URL = "https://fonts.gstatic.com/s/notosans/v35/NotoSans-Regular.ttf"
-ALT_EMOJI_FONT_URL = "https://fonts.gstatic.com/s/notoemoji/v47/NotoColorEmoji-Regular.ttf"
 
 MESSAGES = {
     "private_chat_not_allowed": f"Hi! යාලූ...👋🏻☺️ මමයි {BOT_NAME}, මගෙත් එක්ක Chat කරන්න අපේ Group එකට join වෙන්න 🤗",
     "not_a_member": "AI පාවිච්චි කරන්න අපේ channel දෙකටම join වෙන්න 🤍🌿",
     "waiting": "පොඩ්ඩක් ඉන්න යාලු...😚🪄",
-    "error": "අයියෝ... Diagram එක හැදෙද්දි පොඩි අවුලක් ආවා යාලු 🥹 (කරුණාකර නැවත උත්සාහ කරන්න)"
+    "error": "අයියෝ... Diagram එක හැදෙද්දි පොඩි අවුලක් ආවා යාලු 🥹"
 }
 
-# Configure Gemini API
 client = genai.Client(api_key=GOOGLE_API_KEY)
 
-# ================= HEALTH CHECK SERVER FOR SNAPDEPLOY =================
+# ================= HEALTH CHECK SERVER =================
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/health' or self.path == '/':
@@ -126,9 +113,12 @@ def download_font_with_retry(urls: list, output_path: str, max_retries: int = 3)
 
 def ensure_fonts_downloaded():
     os.makedirs(FONTS_DIR, exist_ok=True)
-    if not os.path.exists(SINHALA_FONT_PATH): download_font_with_retry([SINHALA_FONT_URL, ALT_SINHALA_FONT_URL], SINHALA_FONT_PATH)
-    if not os.path.exists(ENGLISH_FONT_PATH): download_font_with_retry([ENGLISH_FONT_URL, ALT_ENGLISH_FONT_URL], ENGLISH_FONT_PATH)
-    if not os.path.exists(EMOJI_FONT_PATH): download_font_with_retry([EMOJI_FONT_URL, ALT_EMOJI_FONT_URL], EMOJI_FONT_PATH)
+    if not os.path.exists(SINHALA_FONT_PATH): 
+        download_font_with_retry([SINHALA_FONT_URL], SINHALA_FONT_PATH)
+    if not os.path.exists(ENGLISH_FONT_PATH): 
+        download_font_with_retry([ENGLISH_FONT_URL], ENGLISH_FONT_PATH)
+    if not os.path.exists(EMOJI_FONT_PATH): 
+        download_font_with_retry([EMOJI_FONT_URL], EMOJI_FONT_PATH)
 
     try:
         sys_font_dir = "/usr/share/fonts/truetype/custom"
@@ -138,7 +128,7 @@ def ensure_fonts_downloaded():
                 shutil.copy(font, sys_font_dir)
         subprocess.run(["fc-cache", "-f"], check=False)
     except Exception as e:
-        logger.warning(f"Failed to copy fonts to system font dir: {e}")
+        logger.warning(f"Failed to copy fonts: {e}")
 
 # ================= FIX AI SINHALA MISSPELLINGS =================
 def fix_ai_sinhala_mistakes(text: str) -> str:
@@ -152,12 +142,10 @@ def fix_ai_sinhala_mistakes(text: str) -> str:
     }
     for wrong, correct in replacements.items():
         text = text.replace(wrong, correct)
-        
     text = re.sub(r'\s+([\u0DCA-\u0DDF])', r'\1', text)
     text = text.replace('\u200B', '')
     return text
 
-# ================= FIX CAPTION CLEANUP =================
 def clean_final_caption(raw_caption: str) -> str:
     patterns_to_remove = [
         r' - Educational Diagram for G\.C\.E\. A/L Science',
@@ -177,15 +165,12 @@ def clean_final_caption(raw_caption: str) -> str:
         r'උසස් පෙළ ජීව විද්‍යා අධ්‍යාපනික සටහන',
         r'උසස් පෙළ විද්‍යා අධ්‍යාපනික සටහන'
     ]
-    
     clean_text = raw_caption
     for pattern in patterns_to_remove:
         clean_text = re.sub(pattern, '', clean_text, flags=re.IGNORECASE)
-        
     clean_text = re.sub(r'^[\s\-]+|[\s\-]+$', '', clean_text)
     return clean_text.strip()
 
-# ================= FORCE INJECT WATERMARK =================
 def inject_watermark(svg_code: str) -> str:
     watermark_text = "Biovra AI 🧡⚡️ - By @BiologyHUBLK 🩵"
     if watermark_text not in svg_code:
@@ -195,23 +180,45 @@ def inject_watermark(svg_code: str) -> str:
         svg_code = svg_code.rstrip().replace("</svg>", watermark_svg)
     return svg_code
 
-# ================= UPDATED PROMPT =================
+# ================= UPDATED PROMPT - MINIMAP FIXED =================
 def build_gemini_prompt(user_query: str) -> str:
     is_mindmap = "mind map" in user_query.lower() or "mindmap" in user_query.lower()
     
     if is_mindmap:
         style_instructions = """
-**MIND MAP DESIGN RULES**:
-- Space out the central node and branch nodes generously across the entire 1600x1200 canvas.
-- Nodes MUST NOT overlap each other.
-- **MANDATORY**: You MUST draw a `<rect>` or `<circle>` background for EVERY text node (label).
-- Format nodes EXACTLY like this example template:
-  <rect x="200" y="300" width="280" height="120" rx="15" fill="#E8F8F5" stroke="#2C3E50" stroke-width="2"/>
-  <text x="340" y="340" text-anchor="middle">
-      <tspan x="340" dy="0" font-size="22px" font-weight="600" fill="#1A1A2E">English Text</tspan>
-      <tspan x="340" dy="35" font-size="20px" font-weight="500" fill="#16213E">සිංහල පෙළ</tspan>
-      <tspan x="340" dy="25" font-size="16px" fill="#34495E">Sub-text / Extra Details</tspan>
-  </text>
+**MIND MAP DESIGN RULES (CRITICAL - READ CAREFULLY)**:
+
+1. **SPACING RULE (MOST IMPORTANT)**:
+   - Place the CENTRAL NODE at the center: x="800", y="200"
+   - For SUB-NODES (level 1), use these Y positions:
+     - Node 1: y="380"
+     - Node 2: y="520"
+     - Node 3: y="660"
+     - Node 4: y="800"
+     - Node 5: y="940"
+   - For SUB-SUB-NODES (level 2), add +60 to the parent Y position
+   - DO NOT place two nodes at the same Y coordinate - they WILL OVERLAP!
+
+2. **MANDATORY BACKGROUND BOXES**:
+   - Draw a `<rect>` or `<circle>` background for EVERY text node
+   - Use different pastel colors for different branches
+
+3. **TEXT FORMATTING RULES**:
+   - EVERY `<tspan>` MUST have the SAME `x` coordinate as its parent `<text>` tag
+   - Sinhala text size: font-size="20px"
+   - English text size: font-size="22px"
+
+4. **EXAMPLE NODE (FOLLOW EXACTLY)**:
+   <rect x="150" y="360" width="300" height="110" rx="15" fill="#E8F8F5" stroke="#2C3E50" stroke-width="2"/>
+   <text x="300" y="400" text-anchor="middle">
+       <tspan x="300" dy="0" font-size="22px" font-weight="600" fill="#1A1A2E">English Title</tspan>
+       <tspan x="300" dy="32" font-size="20px" font-weight="500" fill="#16213E">සිංහල ශීර්ෂය</tspan>
+       <tspan x="300" dy="28" font-size="16px" fill="#34495E">Extra details</tspan>
+   </text>
+
+5. **CONNECTING LINES**:
+   - Use `<line>` with stroke="#2C3E50" stroke-width="2" to connect nodes
+   - Start from center node to each sub-node
 """
     else:
         style_instructions = """
@@ -249,16 +256,12 @@ The user requested an educational graphic for: "{user_query}"
 
 2. **MANDATORY TITLE**: You MUST include the Main Title at x="800" y="80" (English) and Subtitle at x="800" y="130" (Sinhala). DO NOT skip the title!
 
-3. **NODE & TEXT STRUCTURE (PREVENT BROKEN TEXT)**:
-   - To prevent text from dropping to the bottom in a single broken line, EVERY `<tspan>` MUST have the EXACT SAME `x` coordinate as its parent `<text>` tag.
-
-4. **SUPERSCRIPTS AND SUBSCRIPTS**:
+3. **SUPERSCRIPTS AND SUBSCRIPTS**:
    - DO NOT use HTML `<sub>` or `<sup>` tags (they break SVG rendering).
    - For **subscripts** (e.g., H₂O, CO₂), use inline SVG tspan with baseline-shift: `H<tspan baseline-shift="sub" font-size="0.7em">2</tspan>O`
    - For **superscripts** (e.g., x², Mg²⁺), use inline SVG tspan with baseline-shift: `Mg<tspan baseline-shift="super" font-size="0.7em">2+</tspan>`
-   - Do NOT add a new `x` attribute to the inline baseline-shift tspan, keep it exactly as shown above.
 
-5. **STRICT MARGINS**: Keep ALL content strictly within x="100" to "1500", and y="150" to "1100".
+4. **STRICT MARGINS**: Keep ALL content strictly within x="100" to "1500", and y="150" to "1100".
 
 **COLORS AND STYLES**:
 - Use pastel colors for structures (Pink, Blue, Green, Yellow, Purple, Orange) with dark (#2C3E50) outlines.
@@ -267,8 +270,8 @@ The user requested an educational graphic for: "{user_query}"
 
 **OUTPUT FORMAT**:
 <<<CAPTION>>>
-English Title (Short, without suffixes like "- Educational Diagram")
-Sinhala Title (Short, without suffixes like "- උසස් පෙළ") + Space + [2-3 scientific emojis]
+English Title (Short)
+Sinhala Title (Short) + [2-3 scientific emojis]
 <<<END_CAPTION>>>
 
 <<<SVG>>>
@@ -282,7 +285,6 @@ Sinhala Title (Short, without suffixes like "- උසස් පෙළ") + Space 
 
 # ================= MEMBERSHIP CHECK FUNCTIONS =================
 async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE, channel_username: str) -> bool:
-    """Check if user is a member of a given channel"""
     try:
         member = await context.bot.get_chat_member(chat_id=channel_username, user_id=user_id)
         return member.status in ['creator', 'administrator', 'member']
@@ -290,10 +292,8 @@ async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE, cha
         return False
 
 async def is_user_exempt(user_id: int, context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> bool:
-    """Check if user is exempt from membership check (by ID or admin)"""
     if user_id in EXEMPT_USER_IDS:
         return True
-    # Check if user is an admin in the group (if this is a group chat)
     try:
         member = await context.bot.get_chat_member(chat_id=chat_id, user_id=user_id)
         if member.status in ['creator', 'administrator']:
@@ -302,35 +302,26 @@ async def is_user_exempt(user_id: int, context: ContextTypes.DEFAULT_TYPE, chat_
         pass
     return False
 
-# ================= JOIN MESSAGE AND CALLBACK =================
 async def send_join_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send the join channels message with buttons"""
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("අපේ Main Channel එක 🤍🌝", url=MAIN_CHANNEL_LINK)],
         [InlineKeyboardButton("අපේ Backup Channel එක 🤍🌝", url=BACKUP_CHANNEL_LINK)],
         [InlineKeyboardButton("මම දෙකටම join වෙලා ඉන්නේ ✅", callback_data="check_join")]
     ])
-    await update.message.reply_text(
-        MESSAGES["not_a_member"],
-        reply_markup=keyboard
-    )
+    await update.message.reply_text(MESSAGES["not_a_member"], reply_markup=keyboard)
 
 async def join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle callback when user clicks 'I have joined both'"""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     chat_id = query.message.chat_id
 
-    # Check membership in both channels
     in_main = await check_membership(user_id, context, MAIN_CHANNEL_USERNAME)
     in_backup = await check_membership(user_id, context, BACKUP_CHANNEL_USERNAME)
 
     if in_main and in_backup:
-        # User is in both, now we proceed to process the original message
         original_query = context.user_data.get('pending_query')
         if original_query:
-            # Delete the join message and proceed
             await query.message.delete()
             fake_update = update._replace(message=query.message)
             fake_update.effective_user = query.from_user
@@ -339,9 +330,8 @@ async def join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.message.reply_text("කරුණාකර නැවත ඔබගේ ප්‍රශ්නය ටයිප් කරන්න.")
     else:
-        # Still not in both, show the join message again
         await query.message.reply_text(
-            "Channel දෙකටම join වෙලා නැහැ..🙃 join වෙලා 'join වෙලා ඉන්නේ ✅' ඔබන්න.",
+            "Channel දෙකටම join වෙලා නැහැ..🙃",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("අපේ Main Channel එක 🤍🌝", url=MAIN_CHANNEL_LINK)],
                 [InlineKeyboardButton("අපේ Backup Channel එක 🤍🌝", url=BACKUP_CHANNEL_LINK)],
@@ -350,7 +340,6 @@ async def join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def process_diagram_request(update: Update, context: ContextTypes.DEFAULT_TYPE, query_text: str):
-    """Process the diagram generation (used after membership pass)"""
     waiting_msg = await update.message.reply_text(MESSAGES["waiting"])
     
     png_bytes, caption = None, ""
@@ -421,7 +410,6 @@ async def render_svg_with_playwright(svg_code: str) -> bytes:
     try:
         from playwright.async_api import async_playwright
         
-        # Updated font style to strictly cover both text and tspan tags
         font_style = """
         <style>
             text, tspan { 
@@ -470,7 +458,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message or not chat: return
     text = message.text or message.caption or ""
 
-    # Private chat handling
     if chat.type == "private":
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton("Join Group 🌿🤍", url=GROUP_LINK)
@@ -483,64 +470,51 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text(MESSAGES["private_chat_not_allowed"], reply_markup=keyboard)
         return
 
-    # Check if bot is mentioned or replied
     has_mention = bool(re.search(rf"@{BOT_USERNAME}(\s|$|\?|\.|,)", text, re.IGNORECASE))
     is_reply = message.reply_to_message and message.reply_to_message.from_user.username and message.reply_to_message.from_user.username.lower() == BOT_USERNAME.lower()
     if not has_mention and not is_reply:
         return
 
-    # Extract query
     cleaned_query = re.sub(rf"@{BOT_USERNAME}\s*", "", text, flags=re.IGNORECASE).strip()
     if not cleaned_query:
         cleaned_query = "general science diagram"
 
-    # Check exemption (user ID or admin)
     if await is_user_exempt(user.id, context, chat.id):
-        # Exempt, proceed directly
         await process_diagram_request(update, context, cleaned_query)
         return
 
-    # Check membership in both channels
     in_main = await check_membership(user.id, context, MAIN_CHANNEL_USERNAME)
     in_backup = await check_membership(user.id, context, BACKUP_CHANNEL_USERNAME)
 
     if in_main and in_backup:
-        # User is in both, proceed
         await process_diagram_request(update, context, cleaned_query)
     else:
-        # Store the query in context for later use after joining
         context.user_data['pending_query'] = cleaned_query
         await send_join_message(update, context)
 
 # ================= APPLICATION START =================
 async def post_init(application: Application):
-    """
-    Workaround for python-telegram-bot ExtBot initialization bug.
-    Forces the bot to fetch its identity before starting the updater task.
-    """
     await application.bot.get_me()
 
 def main():
-    # Ensure fonts are downloaded
     try:
         ensure_fonts_downloaded()
     except Exception as e:
         logger.warning(f"Font download issue: {e}")
     
-    # Start health check server for SnapDeploy
     health_thread = threading.Thread(target=run_health_server, daemon=True)
     health_thread.start()
     logger.info("✅ Health check server started on port 7860")
     
-    # Create application with the post_init fix
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
     
-    # Add handlers
     app.add_handler(MessageHandler(filters.TEXT | filters.CAPTION, handle_message))
     app.add_handler(CallbackQueryHandler(join_callback, pattern="check_join"))
     
     logger.info(f"⚡ {BOT_NAME} Bot is running... (Strict Playwright Engine 🔥)")
-    app.run_polling()
+    
+    # ✅ drop_pending_updates=True prevents Conflict error
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
