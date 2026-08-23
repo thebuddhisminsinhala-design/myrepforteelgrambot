@@ -12,6 +12,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
+    Application,
     ApplicationBuilder,
     ContextTypes,
     MessageHandler,
@@ -196,43 +197,73 @@ def inject_watermark(svg_code: str) -> str:
 
 # ================= UPDATED PROMPT =================
 def build_gemini_prompt(user_query: str) -> str:
+    is_mindmap = "mind map" in user_query.lower() or "mindmap" in user_query.lower()
+    
+    if is_mindmap:
+        style_instructions = """
+**MIND MAP DESIGN RULES**:
+- Space out the central node and branch nodes generously across the entire 1600x1200 canvas.
+- Nodes MUST NOT overlap each other.
+- **MANDATORY**: You MUST draw a `<rect>` or `<circle>` background for EVERY text node (label).
+- Format nodes EXACTLY like this example template:
+  <rect x="200" y="300" width="280" height="120" rx="15" fill="#E8F8F5" stroke="#2C3E50" stroke-width="2"/>
+  <text x="340" y="340" text-anchor="middle">
+      <tspan x="340" dy="0" font-size="22px" font-weight="600" fill="#1A1A2E">English Text</tspan>
+      <tspan x="340" dy="35" font-size="20px" font-weight="500" fill="#16213E">සිංහල පෙළ</tspan>
+      <tspan x="340" dy="25" font-size="16px" fill="#34495E">Sub-text / Extra Details</tspan>
+  </text>
+"""
+    else:
+        style_instructions = """
+**DIAGRAM DESIGN RULES**:
+- Keep the structure, Title, and Labels tightly packed to fit perfectly on the canvas. 
+- Use straight pointer lines to connect labels to the specific parts of the graphic.
+- **CRITICAL: DO NOT** draw boxes, rectangles (`<rect>`), or circles (`<circle>`) around the label texts. The labels MUST be free-floating text.
+- Format labels EXACTLY like this example template (NO `<rect>` background):
+  <text x="340" y="340" text-anchor="start">
+      <tspan x="340" dy="0" font-size="22px" font-weight="600" fill="#1A1A2E">English Text</tspan>
+      <tspan x="340" dy="35" font-size="20px" font-weight="500" fill="#16213E">සිංහල පෙළ</tspan>
+  </text>
+"""
+
     return f"""
 You are {BOT_NAME}, an expert scientific vector graphic illustrator for Sri Lankan G.C.E. A/L Science subjects (Biology, Chemistry, and Physics).
-The user requested an educational diagram for: "{user_query}"
+The user requested an educational graphic for: "{user_query}"
 
-**YOUR GOAL**: Create a simple, clean, professional textbook-quality educational diagram.
-Focus on keeping the diagram, Title, and Labels tightly packed to fit perfectly on a standard canvas.
+**YOUR GOAL**: Create a simple, clean, professional textbook-quality educational graphic.
+
+{style_instructions}
 
 **QUALITY STANDARDS**:
-1. **Visual Appeal**: Use modern, clean aesthetics with soft pastel gradients and dark outlines.
-2. **Scientific Accuracy**: Ensure all structures are precise.
-3. **Simplicity**: DO NOT include extra legends, keys, color swatches, or unnecessary decorative elements. ONLY draw Title, Diagram, and Labels.
+1. **Visual Appeal**: Use modern, clean aesthetics with soft pastel gradients and dark outlines for drawings.
+2. **Scientific Accuracy**: Ensure all structures and branches are logically placed and precise.
+3. **Simplicity**: DO NOT include extra legends, keys, or unnecessary decorative elements. ONLY draw Title, Graphic, and Labels.
 
 **LANGUAGE RULES (STRICT SINHALA & ENGLISH)**:
-- EVERY label MUST be in BOTH English AND genuine Sinhala (සිංහල). 
+- EVERY label and mind map node MUST be in BOTH English AND genuine Sinhala (සිංහල). 
 - Use ONLY Sinhala Unicode (U+0D80 to U+0DFF). DO NOT put spaces between a Sinhala letter and its vowel modifier (pillama).
 
-**CRITICAL DESIGN RULES**:
+**CRITICAL DESIGN & TEXT OVERLAP RULES (READ CAREFULLY)**:
 
 1. **CANVAS**: viewBox="0 0 1600 1200" with white background.
 
 2. **MANDATORY TITLE**: You MUST include the Main Title at x="800" y="80" (English) and Subtitle at x="800" y="130" (Sinhala). DO NOT skip the title!
 
-3. **STRICT LABEL RULE (MANDATORY)**:
-   - You MUST include detailed Labels pointing to the main structures of the diagram.
-   - Use short, direct pointer lines.
-   - Keep the gap between the pointer line/structure and the text label VERY SMALL (maximum 15px to 20px).
-   - Position Sinhala labels 40px BELOW English labels to save vertical space.
+3. **NODE & TEXT STRUCTURE (PREVENT BROKEN TEXT)**:
+   - To prevent text from dropping to the bottom in a single broken line, EVERY `<tspan>` MUST have the EXACT SAME `x` coordinate as its parent `<text>` tag.
 
-4. **STRICT MARGINS**: Keep ALL content strictly within x="100" to "1500", and y="150" to "1100".
+4. **SUPERSCRIPTS AND SUBSCRIPTS**:
+   - DO NOT use HTML `<sub>` or `<sup>` tags (they break SVG rendering).
+   - For **subscripts** (e.g., H₂O, CO₂), use inline SVG tspan with baseline-shift: `H<tspan baseline-shift="sub" font-size="0.7em">2</tspan>O`
+   - For **superscripts** (e.g., x², Mg²⁺), use inline SVG tspan with baseline-shift: `Mg<tspan baseline-shift="super" font-size="0.7em">2+</tspan>`
+   - Do NOT add a new `x` attribute to the inline baseline-shift tspan, keep it exactly as shown above.
 
-5. **STRICT POINTER RULE**: Use extremely short straight lines. DO NOT use long lines that go across the canvas. Keep labels right next to their parts.
+5. **STRICT MARGINS**: Keep ALL content strictly within x="100" to "1500", and y="150" to "1100".
 
 **COLORS AND STYLES**:
 - Use pastel colors for structures (Pink, Blue, Green, Yellow, Purple, Orange) with dark (#2C3E50) outlines.
 - English labels: font-size="22px", fill="#1A1A2E", font-weight="600".
 - Sinhala labels: font-size="20px", fill="#16213E", font-weight="500".
-- Use text-anchor="start" for ALL labels.
 
 **OUTPUT FORMAT**:
 <<<CAPTION>>>
@@ -297,20 +328,13 @@ async def join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if in_main and in_backup:
         # User is in both, now we proceed to process the original message
-        # We need to re-trigger the diagram generation for the original query.
-        # We stored the original query in context.user_data
         original_query = context.user_data.get('pending_query')
         if original_query:
             # Delete the join message and proceed
             await query.message.delete()
-            # Simulate a new message with the query
             fake_update = update._replace(message=query.message)
             fake_update.effective_user = query.from_user
             fake_update.effective_chat = query.message.chat
-            # We need to call the diagram generation with the stored query
-            # But we can just re-route to handle_message with the query
-            # However handle_message expects a real message object.
-            # We'll just call a separate function.
             await process_diagram_request(fake_update, context, original_query)
         else:
             await query.message.reply_text("කරුණාකර නැවත ඔබගේ ප්‍රශ්නය ටයිප් කරන්න.")
@@ -327,7 +351,6 @@ async def join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def process_diagram_request(update: Update, context: ContextTypes.DEFAULT_TYPE, query_text: str):
     """Process the diagram generation (used after membership pass)"""
-    # This is copied from handle_message logic after membership check
     waiting_msg = await update.message.reply_text(MESSAGES["waiting"])
     
     png_bytes, caption = None, ""
@@ -348,14 +371,7 @@ async def process_diagram_request(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_photo(photo=io.BytesIO(png_bytes), caption=caption, parse_mode="HTML")
         await context.bot.delete_message(chat_id=update.message.chat_id, message_id=waiting_msg.message_id)
 
-# ================= GENERATE DIAGRAM FUNCTIONS (unchanged) =================
-async def in_channel(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    # Legacy, kept for reference but not used
-    try:
-        member = await context.bot.get_chat_member(chat_id=MAIN_CHANNEL_USERNAME, user_id=user_id)
-        return member.status in ['creator', 'administrator', 'member']
-    except: return False
-
+# ================= GENERATE DIAGRAM FUNCTIONS =================
 def sanitize_unwanted_characters(text: str) -> str:
     cleaned = re.sub(r'[^\u0000-\u007F\u0D80-\u0DFF\u00A0-\u00FF\u2000-\u206F\u2600-\u27BF\U0001F000-\U0001FFFF]', '', text)
     cleaned = fix_ai_sinhala_mistakes(cleaned)
@@ -405,9 +421,10 @@ async def render_svg_with_playwright(svg_code: str) -> bytes:
     try:
         from playwright.async_api import async_playwright
         
+        # Updated font style to strictly cover both text and tspan tags
         font_style = """
         <style>
-            text { 
+            text, tspan { 
                 font-family: 'Noto Sans Sinhala', 'LKLUG', sans-serif !important; 
                 text-rendering: optimizeLegibility;
             }
@@ -453,7 +470,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message or not chat: return
     text = message.text or message.caption or ""
 
-    # Private chat handling (unchanged)
+    # Private chat handling
     if chat.type == "private":
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton("Join Group 🌿🤍", url=GROUP_LINK)
@@ -496,6 +513,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_join_message(update, context)
 
 # ================= APPLICATION START =================
+async def post_init(application: Application):
+    """
+    Workaround for python-telegram-bot ExtBot initialization bug.
+    Forces the bot to fetch its identity before starting the updater task.
+    """
+    await application.bot.get_me()
+
 def main():
     # Ensure fonts are downloaded
     try:
@@ -508,8 +532,8 @@ def main():
     health_thread.start()
     logger.info("✅ Health check server started on port 7860")
     
-    # Create application
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    # Create application with the post_init fix
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
     
     # Add handlers
     app.add_handler(MessageHandler(filters.TEXT | filters.CAPTION, handle_message))
