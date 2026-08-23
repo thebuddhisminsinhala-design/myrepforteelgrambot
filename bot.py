@@ -184,47 +184,45 @@ def inject_watermark(svg_code: str) -> str:
 def build_gemini_prompt(user_query: str) -> str:
     is_mindmap = "mind map" in user_query.lower() or "mindmap" in user_query.lower()
     
-    # Common text formatting rule - SIGNIFICANTLY INCREASED dy values for Sinhala overlapping
+    # Common text formatting rule - FORCED 2 LINES MAX
     common_text_rules = """
-**CRITICAL TEXT FORMATTING RULE (MUST FOLLOW - FIXES SINHALA OVERLAP)**:
+**CRITICAL TEXT FORMATTING RULE (MUST FOLLOW - PREVENTS OVERLAP)**:
 
-For ALL text nodes (both mindmap AND diagram), use these EXACT dy values to prevent overlapping of tall Sinhala vowel modifiers (like ු, ූ, ි, ී):
-- First line (English Title/Label): dy="0" (font-size: 22px)
-- Second line (Sinhala Title/Label): dy="55" (font-size: 20px)  ← INCREASED heavily to 55px to ensure no overlap
-- Third line (Sub-text English): dy="45" (font-size: 16px)     ← INCREASED to 45px to avoid touching Sinhala above
-- Fourth line (Sub-text Sinhala): dy="45" (font-size: 16px)    ← INCREASED to 45px to avoid touching English above
+To completely fix Sinhala text overlapping issues, you MUST restrict ALL text blocks to a MAXIMUM of 2 lines.
+Do NOT add 3rd or 4th lines for sub-details. If you need to include extra details, combine them into the main line text.
 
-**WHY**: Normal (non-bold) Sinhala text renders with very tall line heights due to complex modifiers.
-These larger dy values (55, 45) ensure BOTH bold and normal Sinhala text have plenty of space.
-This completely prevents overlapping. DO NOT use smaller dy values!
+For ALL text nodes (both mindmap AND diagram), use EXACTLY TWO `<tspan>` elements:
+- Line 1 (English): dy="0" (font-size: 20px)
+- Line 2 (Sinhala): dy="45" (font-size: 20px)
+
+**DO NOT** use more than 2 lines per text block under any circumstances!
 """
     
     if is_mindmap:
         style_instructions = """
 **MIND MAP DESIGN RULES**:
 
-1. **SPACING RULE (CRITICAL - NO OVERLAP)**:
+1. **SPACING RULE (CRITICAL)**:
    - CENTER NODE: x="800", y="200"
    - SUB-NODES (level 1): use these Y positions:
      - Node 1: y="420"
-     - Node 2: y="600"  
-     - Node 3: y="780"
-     - Node 4: y="960"
-     - Node 5: y="1080"
-   - SUB-SUB-NODES: add +100 to parent Y position
-   - DO NOT place two nodes at the same Y coordinate
+     - Node 2: y="590"  
+     - Node 3: y="760"
+     - Node 4: y="930"
+     - Node 5: y="1050"
+   - SUB-SUB-NODES: add +90 to parent Y position
 
 2. **MANDATORY BACKGROUND BOXES**:
    - Draw `<rect>` or `<circle>` background for EVERY text node
    - Use different pastel colors for different branches
-   - Rect height: use 170px (increased from 140 to accommodate larger dy spacing)
+   - Rect height: 100px (Strictly sized for exactly 2 lines of text)
+   - Rect width: Minimum 400px to fit combined text
 
-3. **TEXT STRUCTURE (FOLLOW EXACTLY)**:
-   <rect x="150" y="400" width="360" height="170" rx="15" fill="#E8F8F5" stroke="#2C3E50" stroke-width="2"/>
-   <text x="330" y="440" text-anchor="middle">
-       <tspan x="330" dy="0" font-size="22px" font-weight="600" fill="#1A1A2E">English Title</tspan>
-       <tspan x="330" dy="55" font-size="20px" font-weight="500" fill="#16213E">සිංහල ශීර්ෂය</tspan>
-       <tspan x="330" dy="45" font-size="16px" fill="#34495E">Extra details / අමතර කරුණු</tspan>
+3. **TEXT STRUCTURE (MAX 2 LINES - FOLLOW EXACTLY)**:
+   <rect x="150" y="400" width="450" height="100" rx="15" fill="#E8F8F5" stroke="#2C3E50" stroke-width="2"/>
+   <text x="375" y="445" text-anchor="middle">
+       <tspan x="375" dy="0" font-size="20px" font-weight="600" fill="#1A1A2E">English Title (Add details here if needed)</tspan>
+       <tspan x="375" dy="45" font-size="20px" font-weight="500" fill="#16213E">සිංහල ශීර්ෂය (අමතර විස්තර මෙහි එක් කරන්න)</tspan>
    </text>
 
 4. **CONNECTING LINES**:
@@ -238,10 +236,10 @@ This completely prevents overlapping. DO NOT use smaller dy values!
 - **CRITICAL: DO NOT** draw boxes around labels (NO `<rect>` or `<circle>` backgrounds)
 - Labels MUST be free-floating text
 
-**TEXT STRUCTURE (FOLLOW EXACTLY)**:
+**TEXT STRUCTURE (MAX 2 LINES - FOLLOW EXACTLY)**:
   <text x="340" y="340" text-anchor="start">
-      <tspan x="340" dy="0" font-size="22px" font-weight="600" fill="#1A1A2E">English Label</tspan>
-      <tspan x="340" dy="55" font-size="20px" font-weight="500" fill="#16213E">සිංහල ලේබලය</tspan>
+      <tspan x="340" dy="0" font-size="20px" font-weight="600" fill="#1A1A2E">English Label (Details)</tspan>
+      <tspan x="340" dy="45" font-size="20px" font-weight="500" fill="#16213E">සිංහල ලේබලය (විස්තර)</tspan>
   </text>
 """
 
@@ -266,7 +264,7 @@ The user requested an educational graphic for: "{user_query}"
 
 **CANVAS**: viewBox="0 0 1600 1200" with white background
 
-**MANDATORY TITLE**: Main Title at x="800" y="80" (English) and Subtitle at x="800" y="140" (Sinhala)
+**MANDATORY TITLE**: Main Title at x="800" y="80" (English) and Subtitle at x="800" y="130" (Sinhala)
 
 **SUPERSCRIPTS AND SUBSCRIPTS**:
 - DO NOT use HTML `<sub>` or `<sup>` tags
@@ -277,7 +275,7 @@ The user requested an educational graphic for: "{user_query}"
 
 **COLORS AND STYLES**:
 - Pastel colors for structures (Pink, Blue, Green, Yellow, Purple, Orange) with dark (#2C3E50) outlines
-- English: font-size="22px", fill="#1A1A2E", font-weight="600"
+- English: font-size="20px", fill="#1A1A2E", font-weight="600"
 - Sinhala: font-size="20px", fill="#16213E", font-weight="500"
 
 **OUTPUT FORMAT**:
