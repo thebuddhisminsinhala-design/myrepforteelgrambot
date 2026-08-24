@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # ================= CONFIGURATION =================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GEMINI_MODEL_NAME = "gemini-3.5-flash-lite""
+GEMINI_MODEL_NAME = "gemini-3.5-flash-lite"
 
 if not TELEGRAM_BOT_TOKEN:
     logger.error("❌ TELEGRAM_BOT_TOKEN environment variable not set!")
