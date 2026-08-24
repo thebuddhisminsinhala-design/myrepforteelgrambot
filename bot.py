@@ -8,6 +8,7 @@ import unicodedata
 import shutil
 import subprocess
 import threading
+import random
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 # ================= CONFIGURATION =================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GEMINI_MODEL_NAME = "gemini-3.5-flash-lite"
+GEMINI_MODEL_NAME = "gemini-3.5-flash-lite""
 
 if not TELEGRAM_BOT_TOKEN:
     logger.error("❌ TELEGRAM_BOT_TOKEN environment variable not set!")
@@ -180,7 +181,7 @@ def inject_watermark(svg_code: str) -> str:
         svg_code = svg_code.rstrip().replace("</svg>", watermark_svg)
     return svg_code
 
-# ================= UPDATED PROMPT - FIXED SINHALA OVERLAP =================
+# ================= UPDATED PROMPT - CREATIVE STYLES =================
 def build_gemini_prompt(user_query: str) -> str:
     is_mindmap = "mind map" in user_query.lower() or "mindmap" in user_query.lower()
     
@@ -198,34 +199,53 @@ For ALL text nodes (both mindmap AND diagram), use EXACTLY TWO `<tspan>` element
 """
     
     if is_mindmap:
-        style_instructions = """
-**MIND MAP DESIGN RULES**:
+        layout_styles = [
+            """**STYLE 1: HIERARCHICAL VERTICAL (TOP-DOWN)**
+   - MAIN NODE: Top center (CX="800", CY="200")
+   - SUB-NODES: Branch out downwards into two columns (Left CX="400", Right CX="1200")
+   - Y POSITIONS: Space them vertically (e.g., CY="450", CY="700", CY="950")""",
+            """**STYLE 2: HORIZONTAL FLOW (LEFT-TO-RIGHT)**
+   - MAIN NODE: Middle Left (CX="425", CY="600")
+   - SUB-NODES: Branch out to the right (e.g., CX="950", CY="300", CY="500", CY="700", CY="900")
+   - SUB-SUB-NODES: Far right (e.g., CX="1350" but keep safely within canvas)""",
+            """**STYLE 3: CENTRAL RADIAL (HUB AND SPOKE)**
+   - MAIN NODE: Exact Center (CX="800", CY="600")
+   - SUB-NODES: Orbit around the center radially (e.g., Top-Left CX="400" CY="300", Top-Right CX="1200" CY="300", Bottom-Left CX="400" CY="900", Bottom-Right CX="1200" CY="900", Top CX="800" CY="250", Bottom CX="800" CY="950")""",
+            """**STYLE 4: BOTTOM-UP TREE (GROWING UPWARDS)**
+   - MAIN NODE: Bottom center (CX="800", CY="1050")
+   - SUB-NODES: Branch out upwards into two columns (Left CX="400", Right CX="1200")
+   - Y POSITIONS: Space them vertically going UP (e.g., CY="800", CY="550", CY="300")"""
+        ]
+        
+        selected_style = random.choice(layout_styles)
+        
+        style_instructions = f"""
+**MIND MAP DESIGN RULES (CREATIVE LAYOUT)**:
 
-1. **SPACING RULE (CRITICAL)**:
-   - CENTER NODE: x="800", y="200"
-   - SUB-NODES (level 1): use these Y positions:
-     - Node 1: y="420"
-     - Node 2: y="590"  
-     - Node 3: y="760"
-     - Node 4: y="930"
-     - Node 5: y="1050"
-   - SUB-SUB-NODES: add +90 to parent Y position
+1. **LAYOUT PATTERN**:
+   {selected_style}
 
-2. **MANDATORY BACKGROUND BOXES**:
-   - Draw `<rect>` or `<circle>` background for EVERY text node
-   - Use different pastel colors for different branches
-   - Rect height: 100px (Strictly sized for exactly 2 lines of text)
-   - Rect width: Minimum 400px to fit combined text
+2. **MANDATORY BACKGROUND BOXES & ALIGNMENT MATH**:
+   - Draw `<rect>` backgrounds for EVERY text node with rounded corners (rx="20")
+   - Use vibrant, diverse pastel colors for different branches to make it visually creative and colorful.
+   - Rect width MUST be 450px, height MUST be 100px.
+   - **CRITICAL MATH FOR ALIGNMENT**: For a node you want to position at geometric center (CX, CY):
+     - Rect `x` = CX - 225
+     - Rect `y` = CY - 50
+     - Text `x` = CX
+     - Text line 1 initial `y` = CY - 5
 
 3. **TEXT STRUCTURE (MAX 2 LINES - FOLLOW EXACTLY)**:
-   <rect x="150" y="400" width="450" height="100" rx="15" fill="#E8F8F5" stroke="#2C3E50" stroke-width="2"/>
-   <text x="375" y="445" text-anchor="middle">
-       <tspan x="375" dy="0" font-size="20px" font-weight="600" fill="#1A1A2E">English Title (Add details here if needed)</tspan>
-       <tspan x="375" dy="45" font-size="20px" font-weight="500" fill="#16213E">සිංහල ශීර්ෂය (අමතර විස්තර මෙහි එක් කරන්න)</tspan>
+   <!-- Example for a node centered at CX=800, CY=200 -->
+   <rect x="575" y="150" width="450" height="100" rx="20" fill="#FFE0B2" stroke="#2C3E50" stroke-width="2"/>
+   <text x="800" y="195" text-anchor="middle">
+       <tspan x="800" dy="0" font-size="20px" font-weight="600" fill="#1A1A2E">English Title</tspan>
+       <tspan x="800" dy="45" font-size="20px" font-weight="500" fill="#16213E">සිංහල ශීර්ෂය</tspan>
    </text>
 
 4. **CONNECTING LINES**:
-   - Use `<line>` with stroke="#2C3E50" stroke-width="2" to connect nodes
+   - Draw all `<line>` or `<path>` elements FIRST so they render completely behind the rectangular boxes.
+   - Use beautiful curved lines if possible or distinct dark lines (stroke="#2C3E50" stroke-width="3").
 """
     else:
         style_instructions = """
@@ -247,14 +267,14 @@ For ALL text nodes (both mindmap AND diagram), use EXACTLY TWO `<tspan>` element
 You are {BOT_NAME}, an expert scientific vector graphic illustrator for Sri Lankan G.C.E. A/L Science subjects (Biology, Chemistry, and Physics).
 The user requested an educational graphic for: "{user_query}"
 
-**YOUR GOAL**: Create a simple, clean, professional textbook-quality educational graphic.
+**YOUR GOAL**: Create a highly creative, colorful, and clean professional textbook-quality educational graphic.
 
 {style_instructions}
 
 {common_text_rules}
 
 **QUALITY STANDARDS**:
-1. **Visual Appeal**: Use modern, clean aesthetics with soft pastel gradients and dark outlines
+1. **Visual Appeal**: Use modern, clean aesthetics with vivid pastel gradients and dark outlines
 2. **Scientific Accuracy**: Ensure all structures are logically placed and precise
 3. **Simplicity**: DO NOT include extra legends, keys, or unnecessary decorative elements
 
@@ -272,11 +292,6 @@ The user requested an educational graphic for: "{user_query}"
 - For superscripts: `Mg<tspan baseline-shift="super" font-size="0.7em">2+</tspan>`
 
 **STRICT MARGINS (CRITICAL)**: Keep ALL content well within the canvas. You MUST leave a 200px buffer on the left and right. Keep all drawing and text safely inside x="200" to "1400", and y="150" to "1100".
-
-**COLORS AND STYLES**:
-- Pastel colors for structures (Pink, Blue, Green, Yellow, Purple, Orange) with dark (#2C3E50) outlines
-- English: font-size="20px", fill="#1A1A2E", font-weight="600"
-- Sinhala: font-size="20px", fill="#16213E", font-weight="500"
 
 **OUTPUT FORMAT**:
 <<<CAPTION>>>
@@ -404,7 +419,7 @@ def force_close_xml_tags(svg_code: str) -> str:
 
 def generate_diagram(query: str, attempt: int = 0):
     prompt = build_gemini_prompt(query)
-    temp = min(0.1 + (attempt * 0.2), 0.7)
+    temp = min(0.3 + (attempt * 0.2), 0.8)
     response = client.models.generate_content(
         model=GEMINI_MODEL_NAME,
         contents=prompt,
@@ -471,6 +486,8 @@ async def convert_svg_to_png_bytes(svg_code: str) -> bytes:
 
 # ================= MESSAGE HANDLER =================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f"Received message from {update.effective_user.id} in chat {update.effective_chat.id}: {update.message.text if update.message else 'no text'}")
+    
     message, chat, user = update.effective_message, update.effective_chat, update.effective_user
     if not message or not chat: return
     text = message.text or message.caption or ""
@@ -511,6 +528,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================= APPLICATION START =================
 async def post_init(application: Application):
+    # Try to delete any existing webhook, but don't crash if it fails (network issues)
+    try:
+        await application.bot.delete_webhook(read_timeout=30, write_timeout=30)
+        logger.info("Webhook deleted (or none existed). Using polling.")
+    except Exception as e:
+        logger.warning(f"Could not delete webhook: {e}. If a webhook was set, polling may not receive updates.")
     await application.bot.get_me()
 
 def main():
@@ -528,7 +551,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT | filters.CAPTION, handle_message))
     app.add_handler(CallbackQueryHandler(join_callback, pattern="check_join"))
     
-    logger.info(f"⚡ {BOT_NAME} Bot is running... (Strict Playwright Engine 🔥)")
+    logger.info(f"⚡ {BOT_NAME} Bot is running... (Dynamic Creative Engine 🔥)")
     
     app.run_polling(drop_pending_updates=True)
 
