@@ -181,21 +181,24 @@ def inject_watermark(svg_code: str) -> str:
         svg_code = svg_code.rstrip().replace("</svg>", watermark_svg)
     return svg_code
 
-# ================= UPDATED PROMPT - CREATIVE STYLES =================
+# ================= UPDATED PROMPT - CREATIVE STYLES & DETAILED CONTENT =================
 def build_gemini_prompt(user_query: str) -> str:
     is_mindmap = "mind map" in user_query.lower() or "mindmap" in user_query.lower()
     
     common_text_rules = """
-**CRITICAL TEXT FORMATTING RULE (MUST FOLLOW - PREVENTS OVERLAP)**:
+**CRITICAL TEXT FORMATTING & OVERLAP PREVENTION RULES**:
 
-To completely fix Sinhala text overlapping issues, you MUST restrict ALL text blocks to a MAXIMUM of 2 lines.
-Do NOT add 3rd or 4th lines for sub-details. If you need to include extra details, combine them into the main line text.
+1. **NO OVERLAPPING TEXT**:
+   - Each text block MUST contain 3 to 4 structured lines using separate `<tspan>` elements.
+   - For relative vertical spacing between lines, use exact relative `dy` attributes:
+     - Line 1 (English Main Title/Header): dy="0" (font-size: 18px, font-weight: 700)
+     - Line 2 (Sinhala Main Title/ශීර්ෂය): dy="26" (font-size: 18px, font-weight: 600)
+     - Line 3 (Detailed Scientific Point 1): dy="24" (font-size: 15px, font-weight: 400)
+     - Line 4 (Detailed Scientific Point 2): dy="22" (font-size: 15px, font-weight: 400)
 
-For ALL text nodes (both mindmap AND diagram), use EXACTLY TWO `<tspan>` elements:
-- Line 1 (English): dy="0" (font-size: 20px)
-- Line 2 (Sinhala): dy="45" (font-size: 20px)
-
-**DO NOT** use more than 2 lines per text block under any circumstances!
+2. **DETAILED CONTENT (3-4 LINES PER NODE/LABEL)**:
+   - Provide rich, detailed educational content with 3 to 4 lines per node or label.
+   - Explain key features, functions, and definitions clearly in both English and Sinhala across these 3-4 lines.
 """
     
     if is_mindmap:
@@ -203,63 +206,67 @@ For ALL text nodes (both mindmap AND diagram), use EXACTLY TWO `<tspan>` element
             """**STYLE 1: HIERARCHICAL VERTICAL (TOP-DOWN)**
    - MAIN NODE: Top center (CX="800", CY="200")
    - SUB-NODES: Branch out downwards into two columns (Left CX="400", Right CX="1200")
-   - Y POSITIONS: Space them vertically (e.g., CY="450", CY="700", CY="950")""",
+   - Y POSITIONS: Space them vertically (e.g., CY="480", CY="750", CY="1020")""",
             """**STYLE 2: HORIZONTAL FLOW (LEFT-TO-RIGHT)**
    - MAIN NODE: Middle Left (CX="425", CY="600")
-   - SUB-NODES: Branch out to the right (e.g., CX="950", CY="300", CY="500", CY="700", CY="900")
-   - SUB-SUB-NODES: Far right (e.g., CX="1350" but keep safely within canvas)""",
+   - SUB-NODES: Branch out to the right (e.g., CX="950", CY="250", CY="500", CY="750", CY="1000")""",
             """**STYLE 3: CENTRAL RADIAL (HUB AND SPOKE)**
    - MAIN NODE: Exact Center (CX="800", CY="600")
-   - SUB-NODES: Orbit around the center radially (e.g., Top-Left CX="400" CY="300", Top-Right CX="1200" CY="300", Bottom-Left CX="400" CY="900", Bottom-Right CX="1200" CY="900", Top CX="800" CY="250", Bottom CX="800" CY="950")""",
+   - SUB-NODES: Orbit around the center radially (e.g., Top-Left CX="400" CY="250", Top-Right CX="1200" CY="250", Bottom-Left CX="400" CY="950", Bottom-Right CX="1200" CY="950")""",
             """**STYLE 4: BOTTOM-UP TREE (GROWING UPWARDS)**
    - MAIN NODE: Bottom center (CX="800", CY="1050")
    - SUB-NODES: Branch out upwards into two columns (Left CX="400", Right CX="1200")
-   - Y POSITIONS: Space them vertically going UP (e.g., CY="800", CY="550", CY="300")"""
+   - Y POSITIONS: Space them vertically going UP (e.g., CY="800", CY="520", CY="250")"""
         ]
         
         selected_style = random.choice(layout_styles)
         
         style_instructions = f"""
-**MIND MAP DESIGN RULES (CREATIVE LAYOUT)**:
+**MIND MAP DESIGN RULES (CREATIVE & DETAILED LAYOUT)**:
 
 1. **LAYOUT PATTERN**:
    {selected_style}
 
 2. **MANDATORY BACKGROUND BOXES & ALIGNMENT MATH**:
-   - Draw `<rect>` backgrounds for EVERY text node with rounded corners (rx="20")
-   - Use vibrant, diverse pastel colors for different branches to make it visually creative and colorful.
-   - Rect width MUST be 450px, height MUST be 100px.
-   - **CRITICAL MATH FOR ALIGNMENT**: For a node you want to position at geometric center (CX, CY):
-     - Rect `x` = CX - 225
-     - Rect `y` = CY - 50
-     - Text `x` = CX
-     - Text line 1 initial `y` = CY - 5
+   - Draw `<rect>` backgrounds for EVERY node with rounded corners (rx="15")
+   - Use vibrant, diverse pastel colors for different branches to make it visually creative.
+   - Rect width MUST be 480px, height MUST be 140px to fit 3-4 lines comfortably.
+   - **CRITICAL MATH FOR ALIGNMENT**: For a node centered at geometric center (CX, CY):
+     - Rect `x` = CX - 240
+     - Rect `y` = CY - 70
+     - Rect `width` = 480, `height` = 140
+     - Text `x` = CX, `y` = CY - 35, `text-anchor` = "middle"
 
-3. **TEXT STRUCTURE (MAX 2 LINES - FOLLOW EXACTLY)**:
-   <!-- Example for a node centered at CX=800, CY=200 -->
-   <rect x="575" y="150" width="450" height="100" rx="20" fill="#FFE0B2" stroke="#2C3E50" stroke-width="2"/>
-   <text x="800" y="195" text-anchor="middle">
-       <tspan x="800" dy="0" font-size="20px" font-weight="600" fill="#1A1A2E">English Title</tspan>
-       <tspan x="800" dy="45" font-size="20px" font-weight="500" fill="#16213E">සිංහල ශීර්ෂය</tspan>
+3. **TEXT STRUCTURE (3-4 DETAILED LINES)**:
+   <!-- Example for CX=800, CY=200 -->
+   <rect x="560" y="130" width="480" height="140" rx="15" fill="#FFE0B2" stroke="#2C3E50" stroke-width="2"/>
+   <text x="800" y="165" text-anchor="middle">
+       <tspan x="800" dy="0" font-size="18px" font-weight="700" fill="#1A1A2E">English Node Title</tspan>
+       <tspan x="800" dy="26" font-size="18px" font-weight="600" fill="#16213E">සිංහල ශීර්ෂය</tspan>
+       <tspan x="800" dy="24" font-size="15px" font-weight="400" fill="#2C3E50">• Detailed English point / feature</tspan>
+       <tspan x="800" dy="22" font-size="15px" font-weight="400" fill="#2C3E50">• විස්තරාත්මක සිංහල කරුණ</tspan>
    </text>
 
 4. **CONNECTING LINES**:
    - Draw all `<line>` or `<path>` elements FIRST so they render completely behind the rectangular boxes.
-   - Use beautiful curved lines if possible or distinct dark lines (stroke="#2C3E50" stroke-width="3").
+   - Use distinct dark lines (stroke="#2C3E50" stroke-width="3").
 """
     else:
         style_instructions = """
 **DIAGRAM DESIGN RULES**:
-- Keep the structure, Title, and Labels tightly packed.
+- Keep the structure, Title, and Labels tightly packed and detailed.
+- Provide 3-4 detailed lines per label (English name, Sinhala name, key features/functions).
 - **CRITICAL COMPACTNESS**: Place text labels right next to the structures to minimize empty space.
 - **SHORT LINES**: Use straight, VERY SHORT pointer lines (max length 50px to 100px) to connect labels to diagram parts. DO NOT draw long lines.
-- **CRITICAL: DO NOT** draw boxes around labels (NO `<rect>` or `<circle>` backgrounds)
-- Labels MUST be free-floating text
+- **CRITICAL: DO NOT** draw boxes around labels (NO `<rect>` or `<circle>` backgrounds).
+- Labels MUST be free-floating text.
 
-**TEXT STRUCTURE (MAX 2 LINES - FOLLOW EXACTLY)**:
+**TEXT STRUCTURE (3-4 DETAILED LINES)**:
   <text x="340" y="340" text-anchor="start">
-      <tspan x="340" dy="0" font-size="20px" font-weight="600" fill="#1A1A2E">English Label (Details)</tspan>
-      <tspan x="340" dy="45" font-size="20px" font-weight="500" fill="#16213E">සිංහල ලේබලය (විස්තර)</tspan>
+      <tspan x="340" dy="0" font-size="18px" font-weight="700" fill="#1A1A2E">Phospholipid Bilayer</tspan>
+      <tspan x="340" dy="26" font-size="18px" font-weight="600" fill="#16213E">ෆොස්ෆොලිපිඩ ද්විස්තරය</tspan>
+      <tspan x="340" dy="24" font-size="15px" fill="#2C3E50">Hydrophilic heads & hydrophobic tails</tspan>
+      <tspan x="340" dy="22" font-size="15px" fill="#2C3E50">ජලාකර්ෂක හිස් සහ ජලභීතික වලිග</tspan>
   </text>
 """
 
@@ -267,7 +274,7 @@ For ALL text nodes (both mindmap AND diagram), use EXACTLY TWO `<tspan>` element
 You are {BOT_NAME}, an expert scientific vector graphic illustrator for Sri Lankan G.C.E. A/L Science subjects (Biology, Chemistry, and Physics).
 The user requested an educational graphic for: "{user_query}"
 
-**YOUR GOAL**: Create a highly creative, colorful, and clean professional textbook-quality educational graphic.
+**YOUR GOAL**: Create a highly creative, colorful, and clean professional textbook-quality educational graphic with rich details.
 
 {style_instructions}
 
@@ -339,7 +346,6 @@ async def join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
-    chat_id = query.message.chat_id
 
     in_main = await check_membership(user_id, context, MAIN_CHANNEL_USERNAME)
     in_backup = await check_membership(user_id, context, BACKUP_CHANNEL_USERNAME)
@@ -347,11 +353,12 @@ async def join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if in_main and in_backup:
         original_query = context.user_data.get('pending_query')
         if original_query:
-            await query.message.delete()
-            fake_update = update._replace(message=query.message)
-            fake_update.effective_user = query.from_user
-            fake_update.effective_chat = query.message.chat
-            await process_diagram_request(fake_update, context, original_query)
+            try:
+                await query.message.delete()
+            except Exception as e:
+                logger.warning(f"Failed to delete join message: {e}")
+            context.user_data.pop('pending_query', None)
+            await process_diagram_request(update, context, original_query)
         else:
             await query.message.reply_text("කරුණාකර නැවත ඔබගේ ප්‍රශ්නය ටයිප් කරන්න.")
     else:
@@ -365,7 +372,8 @@ async def join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def process_diagram_request(update: Update, context: ContextTypes.DEFAULT_TYPE, query_text: str):
-    waiting_msg = await update.message.reply_text(MESSAGES["waiting"])
+    chat_id = update.effective_chat.id
+    waiting_msg = await context.bot.send_message(chat_id=chat_id, text=MESSAGES["waiting"])
     
     png_bytes, caption = None, ""
     for attempt in range(3):
@@ -377,12 +385,16 @@ async def process_diagram_request(update: Update, context: ContextTypes.DEFAULT_
         except Exception as e:
             logger.warning(f"Attempt {attempt+1} failed: {e}")
             if attempt == 2:
-                await context.bot.delete_message(chat_id=update.message.chat_id, message_id=waiting_msg.message_id)
-                await update.message.reply_text(MESSAGES["error"])
+                try:
+                    await context.bot.delete_message(chat_id=chat_id, message_id=waiting_msg.message_id)
+                except Exception:
+                    pass
+                await context.bot.send_message(chat_id=chat_id, text=MESSAGES["error"])
                 return
     
     if png_bytes:
-        await update.message.reply_photo(
+        await context.bot.send_photo(
+            chat_id=chat_id,
             photo=io.BytesIO(png_bytes), 
             caption=caption, 
             parse_mode="HTML",
@@ -390,7 +402,10 @@ async def process_diagram_request(update: Update, context: ContextTypes.DEFAULT_
             write_timeout=60,
             connect_timeout=60
         )
-        await context.bot.delete_message(chat_id=update.message.chat_id, message_id=waiting_msg.message_id)
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=waiting_msg.message_id)
+        except Exception:
+            pass
 
 # ================= GENERATE DIAGRAM FUNCTIONS =================
 def sanitize_unwanted_characters(text: str) -> str:
@@ -528,7 +543,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================= APPLICATION START =================
 async def post_init(application: Application):
-    # Try to delete any existing webhook, but don't crash if it fails (network issues)
     try:
         await application.bot.delete_webhook(read_timeout=30, write_timeout=30)
         logger.info("Webhook deleted (or none existed). Using polling.")
