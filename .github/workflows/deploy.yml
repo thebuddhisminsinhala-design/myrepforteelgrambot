@@ -15,9 +15,11 @@ jobs:
           username: opc
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
+            set -e
             cd /home/opc/diagrams-bot-2027
-            git pull
-            docker build -t diagrams-bot .
+            git fetch --all
+            git reset --hard origin/main
+            docker build --no-cache -t diagrams-bot .
             docker stop diagrams-bot || true
             docker rm diagrams-bot || true
             docker run -d \
