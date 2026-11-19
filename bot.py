@@ -46,7 +46,7 @@ BOT_USERNAME = "BioDiagrams_Bot"
 BOT_NAME = "Biovra AI 🧡⚡️"
 
 MAIN_CHANNEL_LINK = "https://t.me/BiologyHubLK"
-MAIN_CHANNEL_USERNAME = "@BiologyHubLK"
+MAIN_CHANNEL_USERNAME = "@BiologyHUBLK"
 BACKUP_CHANNEL_LINK = "https://t.me/BiologyHUBLK_Backup"
 BACKUP_CHANNEL_USERNAME = "@BiologyHUBLK_Backup"
 GROUP_LINK = "https://t.me/BiologyHUBLK_Chat"
