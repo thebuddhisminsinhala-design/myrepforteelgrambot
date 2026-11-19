@@ -19,13 +19,16 @@ jobs:
             cd /home/opc/diagrams-bot-2027
             git fetch --all
             git reset --hard origin/main
-            docker build --no-cache -t diagrams-bot .
+            docker build -t diagrams-bot .
             docker stop diagrams-bot || true
             docker rm diagrams-bot || true
             docker run -d \
               --name diagrams-bot \
               --restart unless-stopped \
+              --shm-size=1g \
               -e TELEGRAM_BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}" \
               -e GOOGLE_API_KEY="${{ secrets.GOOGLE_API_KEY }}" \
               -p 7860:7860 \
               diagrams-bot
+            sleep 5
+            docker logs diagrams-bot --tail 50
