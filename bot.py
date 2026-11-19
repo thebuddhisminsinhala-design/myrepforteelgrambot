@@ -3,6 +3,7 @@ import io
 import os
 import sys
 import html
+import traceback
 import logging
 import urllib.request
 import unicodedata
@@ -24,9 +25,14 @@ from telegram.ext import (
 import google.genai as genai
 
 # Logging Setup
+LOG_FILE_PATH = os.path.join(BASE_DIR if 'BASE_DIR' in globals() else os.path.dirname(os.path.abspath(__file__)), "bot_debug.log")
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(LOG_FILE_PATH, encoding="utf-8")
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -385,23 +391,23 @@ async def process_diagram_request(update: Update, context: ContextTypes.DEFAULT_
             png_bytes = await convert_svg_to_png_bytes(svg_code)
             break
         except Exception as e:
-            last_error = f"{type(e).__name__}: {str(e)}"
-            logger.warning(f"Attempt {attempt+1} failed: {last_error}")
+            tb_lines = traceback.format_exc().strip().splitlines()
+            short_tb = "\n".join(tb_lines[-6:])
+            last_error = f"{type(e).__name__}: {str(e)}\n\n{short_tb}"
+            logger.error(f"Attempt {attempt+1} failed:\n{traceback.format_exc()}")
             if attempt == 2:
                 try:
                     await context.bot.delete_message(chat_id=chat_id, message_id=waiting_msg.message_id)
                 except Exception:
                     pass
                 
-                error_msg = MESSAGES["error"]
-                # Show exact error details to exempt/admin users for remote debugging without SSH
-                if user_id in EXEMPT_USER_IDS:
-                    error_msg += f"\n\n<code>{html.escape(last_error[:600])}</code>"
+                # Send plain text (no parse_mode) so Telegram never rejects special characters in tracebacks
+                error_msg = f"{MESSAGES['error']}\n\n🔍 DEBUG LOG:\n{last_error[:3500]}"
                 
                 if update.message:
-                    await update.message.reply_text(error_msg, parse_mode="HTML")
+                    await update.message.reply_text(error_msg)
                 else:
-                    await context.bot.send_message(chat_id=chat_id, text=error_msg, parse_mode="HTML")
+                    await context.bot.send_message(chat_id=chat_id, text=error_msg)
                 return
     
     if png_bytes:
@@ -586,6 +592,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cleaned_query = re.sub(rf"@{BOT_USERNAME}\s*", "", text, flags=re.IGNORECASE).strip()
     if not cleaned_query:
         cleaned_query = "general science diagram"
+
+    # Remote log viewer command via Telegram (@BioDiagrams_Bot logs)
+    if cleaned_query.lower() in ["logs", "/logs", "log"]:
+        try:
+            if os.path.exists(LOG_FILE_PATH):
+                with open(LOG_FILE_PATH, "r", encoding="utf-8") as f:
+                    recent_logs = "".join(f.readlines()[-35:])
+                await message.reply_text(f"📋 RECENT BOT LOGS:\n\n{recent_logs[-3800:] or 'Log file is empty.'}")
+            else:
+                await message.reply_text("No log file found yet.")
+        except Exception as log_err:
+            await message.reply_text(f"Failed to read logs: {log_err}")
+        return
 
     if await is_user_exempt(user.id, context, chat.id):
         await process_diagram_request(update, context, cleaned_query)
