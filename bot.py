@@ -2,6 +2,7 @@ import re
 import io
 import os
 import sys
+import html
 import logging
 import urllib.request
 import unicodedata
@@ -366,6 +367,7 @@ async def join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def process_diagram_request(update: Update, context: ContextTypes.DEFAULT_TYPE, query_text: str):
     chat_id = update.effective_chat.id
+    user_id = update.effective_user.id if update.effective_user else 0
     
     # Send waiting message properly depending on if it's a regular message or callback query
     if update.message:
@@ -374,43 +376,61 @@ async def process_diagram_request(update: Update, context: ContextTypes.DEFAULT_
         waiting_msg = await context.bot.send_message(chat_id=chat_id, text=MESSAGES["waiting"])
     
     png_bytes, caption = None, ""
+    last_error = ""
     for attempt in range(3):
         try:
             caption, svg_code = generate_diagram(query_text, attempt)
-            if not svg_code: raise ValueError("No SVG")
+            if not svg_code:
+                raise ValueError("No <svg> tag found in Gemini response")
             png_bytes = await convert_svg_to_png_bytes(svg_code)
             break
         except Exception as e:
-            logger.warning(f"Attempt {attempt+1} failed: {e}")
+            last_error = f"{type(e).__name__}: {str(e)}"
+            logger.warning(f"Attempt {attempt+1} failed: {last_error}")
             if attempt == 2:
-                await context.bot.delete_message(chat_id=chat_id, message_id=waiting_msg.message_id)
+                try:
+                    await context.bot.delete_message(chat_id=chat_id, message_id=waiting_msg.message_id)
+                except Exception:
+                    pass
+                
+                error_msg = MESSAGES["error"]
+                # Show exact error details to exempt/admin users for remote debugging without SSH
+                if user_id in EXEMPT_USER_IDS:
+                    error_msg += f"\n\n<code>{html.escape(last_error[:600])}</code>"
+                
                 if update.message:
-                    await update.message.reply_text(MESSAGES["error"])
+                    await update.message.reply_text(error_msg, parse_mode="HTML")
                 else:
-                    await context.bot.send_message(chat_id=chat_id, text=MESSAGES["error"])
+                    await context.bot.send_message(chat_id=chat_id, text=error_msg, parse_mode="HTML")
                 return
     
     if png_bytes:
-        if update.message:
-            await update.message.reply_photo(
-                photo=io.BytesIO(png_bytes), 
-                caption=caption, 
-                parse_mode="HTML",
-                read_timeout=60,
-                write_timeout=60,
-                connect_timeout=60
-            )
-        else:
-            await context.bot.send_photo(
-                chat_id=chat_id,
-                photo=io.BytesIO(png_bytes), 
-                caption=caption, 
-                parse_mode="HTML",
-                read_timeout=60,
-                write_timeout=60,
-                connect_timeout=60
-            )
-        await context.bot.delete_message(chat_id=chat_id, message_id=waiting_msg.message_id)
+        safe_caption = html.escape(caption)
+        try:
+            if update.message:
+                await update.message.reply_photo(
+                    photo=io.BytesIO(png_bytes), 
+                    caption=safe_caption, 
+                    parse_mode="HTML",
+                    read_timeout=60,
+                    write_timeout=60,
+                    connect_timeout=60
+                )
+            else:
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=io.BytesIO(png_bytes), 
+                    caption=safe_caption, 
+                    parse_mode="HTML",
+                    read_timeout=60,
+                    write_timeout=60,
+                    connect_timeout=60
+                )
+        finally:
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=waiting_msg.message_id)
+            except Exception:
+                pass
 
 # ================= GENERATE DIAGRAM FUNCTIONS =================
 def sanitize_unwanted_characters(text: str) -> str:
@@ -439,11 +459,10 @@ def force_close_xml_tags(svg_code: str) -> str:
 
 def generate_diagram(query: str, attempt: int = 0):
     prompt = build_gemini_prompt(query)
-    temp = min(0.3 + (attempt * 0.2), 0.8)
     response = client.models.generate_content(
         model=GEMINI_MODEL_NAME,
         contents=prompt,
-        config=genai.types.GenerateContentConfig(temperature=temp, top_p=0.95, max_output_tokens=8192)
+        config=genai.types.GenerateContentConfig(max_output_tokens=16384)
     )
     raw_text = response.text if response else ""
     caption_match = re.search(r"<<<CAPTION>>>\s*([\s\S]*?)\s*<<<END_CAPTION>>>", raw_text, re.IGNORECASE)
@@ -459,44 +478,79 @@ def generate_diagram(query: str, attempt: int = 0):
 
 # ================== STRICT PLAYWRIGHT RENDERING ENGINE ==================
 async def render_svg_with_playwright(svg_code: str) -> bytes:
-    try:
-        from playwright.async_api import async_playwright
-        
-        font_style = """
-        <style>
-            text, tspan { 
-                font-family: 'Noto Sans Sinhala', 'LKLUG', sans-serif !important; 
-                text-rendering: optimizeLegibility;
-            }
-        </style>
-        """
-        if "</defs>" in svg_code:
-            svg_code = svg_code.replace("</defs>", f"{font_style}</defs>")
-        elif "<svg" in svg_code:
-            svg_code = re.sub(r'(<svg[^>]*>)', r'\1' + font_style, svg_code, count=1)
+    from playwright.async_api import async_playwright
+    
+    # Wrap SVG in a full HTML page with explicit local @font-face declarations so Chromium
+    # never hangs on networkidle or crashes rendering standalone SVG XML
+    html_wrapper = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    @font-face {{
+        font-family: 'Noto Sans Sinhala';
+        src: url('file://{SINHALA_FONT_PATH}') format('truetype');
+    }}
+    @font-face {{
+        font-family: 'Noto Sans';
+        src: url('file://{ENGLISH_FONT_PATH}') format('truetype');
+    }}
+    * {{
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }}
+    body {{
+        width: 1600px;
+        height: 1200px;
+        overflow: hidden;
+        background: #ffffff;
+    }}
+    svg {{
+        width: 1600px;
+        height: 1200px;
+        display: block;
+    }}
+    text, tspan {{ 
+        font-family: 'Noto Sans Sinhala', 'Noto Sans', 'LKLUG', sans-serif !important; 
+        text-rendering: optimizeLegibility;
+    }}
+</style>
+</head>
+<body>
+{svg_code}
+</body>
+</html>"""
 
+    browser = None
+    try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(
+                headless=True,
                 args=[
-                    '--no-sandbox', 
+                    '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
-                    '--single-process'
+                    '--no-zygote'
                 ]
             )
             page = await browser.new_page(viewport={'width': 1600, 'height': 1200})
             
-            await page.set_content(svg_code, wait_until="networkidle")
-            await page.wait_for_function("document.fonts.ready")
+            await page.set_content(html_wrapper, wait_until="load", timeout=30000)
+            await page.evaluate("() => document.fonts.ready")
             
-            png_bytes = await page.screenshot(type='png', full_page=True)
-            await browser.close()
+            png_bytes = await page.screenshot(type='png', full_page=False)
             return png_bytes
-            
     except Exception as e:
         logger.error(f"Playwright crashed: {e}")
         raise e
+    finally:
+        if browser:
+            try:
+                await browser.close()
+            except Exception:
+                pass
 
 async def convert_svg_to_png_bytes(svg_code: str) -> bytes:
     ensure_fonts_downloaded()
